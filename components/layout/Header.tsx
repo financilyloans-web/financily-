@@ -53,7 +53,8 @@ export function Header() {
         <div
           className={cn(
             "flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 transition-all duration-500 sm:px-5",
-            scrolled ? "surface-solid" : "border border-white/5 bg-ink-950/40 backdrop-blur-xl",
+            "border border-white/10 bg-ink-950/70 backdrop-blur-2xl",
+            scrolled && "shadow-[0_18px_50px_-16px_rgba(2,4,16,0.9)]",
           )}
         >
           <Logo />
