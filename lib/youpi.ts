@@ -35,6 +35,22 @@ export interface YoupiSession {
   checkoutUrl: string;
 }
 
+export interface VerifyYoupiOrderInput {
+  orderId: string;
+  paymentId?: string;
+  /** Expected amount in INR, cross-checked against the gateway's record. */
+  amount?: number;
+}
+
+export interface YoupiVerificationResult {
+  orderId: string;
+  paymentId?: string;
+  /** true only when the gateway itself reports a paid settlement status. */
+  confirmed: boolean;
+  status: string;
+  amountMatch: boolean;
+}
+
 export type YoupiSessionStatus =
   | "configured"
   | "not-configured";
@@ -112,5 +128,69 @@ export async function createYoupiSession(
     amount: data.amount || amountStr,
     status: data.status || "INITIATED",
     checkoutUrl: data.checkoutUrl,
+  };
+}
+
+/**
+ * Server-side verification of a YouPI order's payment status.
+ *
+ * IMPORTANT: The browser-side `youpi:payment:success` event is a UI hint only
+ * and is spoofable. We therefore never trust it. This function asks the YouPI
+ * gateway directly (authenticated with the merchant API key) for the actual
+ * payment status, and only reports `confirmed: true` when the gateway itself
+ * returns a settled/paid status (SUCCESS, OBSERVED_SUCCESS or RECONCILED).
+ */
+export async function verifyYoupiOrder(
+  input: VerifyYoupiOrderInput,
+): Promise<YoupiVerificationResult> {
+  if (!youpiConfigured()) {
+    throw new Error(
+      "YouPI payment gateway is not configured. Add YOUPI_API_URL, YOUPI_MERCHANT_ID and YOUPI_MERCHANT_API_KEY environment variables.",
+    );
+  }
+
+  const cfg = getConfig();
+  const paymentId = input.paymentId || input.orderId;
+
+  const res = await fetch(
+    `${cfg.apiUrl}/api/v1/payments/${encodeURIComponent(paymentId)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Merchant-Id": cfg.merchantId,
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+    },
+  );
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(
+      `YouPI verification failed (${res.status}): ${data?.error || data?.message || "unknown error"}`,
+    );
+  }
+
+  const status: string = data?.status || data?.paymentStatus || "";
+  const settledStatuses = ["SUCCESS", "OBSERVED_SUCCESS", "RECONCILED"];
+  const confirmed = settledStatuses.includes(status.toUpperCase());
+
+  // Optional amount cross-check when the gateway reports it.
+  let amountMatch = true;
+  if (
+    typeof input.amount === "number" &&
+    typeof data?.amount === "number" &&
+    data.amount > 0
+  ) {
+    amountMatch = Math.abs(data.amount - input.amount) < 0.01;
+  }
+
+  return {
+    orderId: data?.orderId || input.orderId,
+    paymentId: data?.paymentId || input.paymentId,
+    confirmed,
+    status,
+    amountMatch,
   };
 }

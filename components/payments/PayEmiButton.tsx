@@ -28,6 +28,27 @@ type ModalState = {
   error?: string;
 };
 
+/**
+ * Authoritative server-side verification. The browser-success `youpi:payment:success`
+ * event is a spoofable UI hint — we never trust it on its own. We call the
+ * backend, which asks the YouPI gateway (merchant key) for the real status and
+ * only returns `confirmed: true` for a settled payment.
+ */
+async function verifyPayment(orderId: string, paymentId: string, amount: number): Promise<boolean> {
+  try {
+    const res = await fetch("/api/payments/youpi-verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, paymentId, amount }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.confirmed !== true) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function PayEmiButton({
   orderId,
   amount,
@@ -45,7 +66,20 @@ export function PayEmiButton({
     if (!open) return;
     const unsubscribe = onYoupiEvent((detail: YoupiPaymentResult) => {
       if (detail.status === "SUCCESS") {
-        setState({ status: "success" });
+        // The client event is ONLY a trigger — verify with the backend/gateway
+        // before showing success.
+        setState((s) => ({ ...s, status: "loading" }));
+        verifyPayment(orderId, orderId, amount).then((confirmed) => {
+          setState((s) =>
+            confirmed
+              ? { status: "success" }
+              : {
+                  status: "error",
+                  error:
+                    "We're still confirming your payment with the bank. Please check back shortly.",
+                },
+          );
+        });
       } else if (detail.status === "FAILED" || detail.status === "SUSPICIOUS") {
         setState({ status: "error", error: `Payment was ${detail.status.toLowerCase()}. You can retry.` });
       } else if (detail.status === "EXPIRED") {
