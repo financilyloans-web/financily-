@@ -1,1 +1,1 @@
-fix: use firebase-admin v14 API in provision-staff tool
+chore: remove temp commit-message scratch file
