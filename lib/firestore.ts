@@ -1,10 +1,12 @@
 import {
   collection,
+  collectionGroup,
   addDoc,
   getDocs,
   query,
   orderBy,
   where,
+  limit,
   serverTimestamp,
   type Timestamp,
 } from "firebase/firestore";
@@ -13,6 +15,8 @@ import { db } from "./firebase";
 export interface LoanApplication {
   id?: string;
   uid: string;
+  /** Unique human-readable reference, e.g. LN-2026-8492. */
+  refNumber?: string;
   fullName: string;
   mobile: string;
   email: string;
@@ -101,11 +105,25 @@ async function sanitizeKyc(app: Record<string, unknown>) {
   return { ...rest, kycStoredAt: serverTimestamp() };
 }
 
+const REF_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
+
+/**
+ * Generate a unique, human-readable loan reference number (e.g. LN-2026-8492).
+ * Format: LN-<year>-<4 char code>. The random code uses a de-ambiguous alphabet.
+ */
+export function generateRefNumber(): string {
+  const year = new Date().getFullYear();
+  const rand = () => REF_ALPHABET[Math.floor(Math.random() * REF_ALPHABET.length)];
+  const code = `${rand()}${rand()}${rand()}${rand()}`;
+  return `LN-${year}-${code}`;
+}
+
 export async function saveApplication(app: Omit<LoanApplication, "id" | "createdAt">): Promise<string> {
   ensureDb();
   const sanitized = await sanitizeKyc(app);
   const docRef = await addDoc(collection(db!, "users", app.uid, "applications"), {
     ...sanitized,
+    refNumber: app.refNumber || generateRefNumber(),
     createdAt: serverTimestamp(),
   });
   return docRef.id;
@@ -130,10 +148,42 @@ export async function saveLead(app: Omit<LoanApplication, "id" | "createdAt">): 
   const sanitized = await sanitizeKyc(app);
   const docRef = await addDoc(collection(db!, "leads"), {
     ...sanitized,
+    refNumber: app.refNumber || generateRefNumber(),
     source: "apply_form",
     createdAt: serverTimestamp(),
   });
   return docRef.id;
+}
+
+/**
+ * Staff-only: fetch every customer loan application — both authenticated
+ * applications (stored under users/{uid}/applications) and guest leads (top-level
+ * `leads`). Used by the staff dashboard. Requires staff read rules.
+ */
+export async function getAllCustomerApplications(): Promise<LoanApplication[]> {
+  ensureDb();
+  const [appsSnap, leadsSnap] = await Promise.all([
+    getDocs(query(collectionGroup(db!, "applications"), orderBy("createdAt", "desc"), limit(1000))),
+    getDocs(query(collection(db!, "leads"), orderBy("createdAt", "desc"), limit(1000))),
+  ]);
+  const apps = appsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as LoanApplication) }));
+  const leads = leadsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as LoanApplication) }));
+  return [...apps, ...leads].sort((a, b) => {
+    const ta = toTime(a.createdAt);
+    const tb = toTime(b.createdAt);
+    return tb - ta;
+  });
+}
+
+function toTime(ts?: Timestamp | Date | number): number {
+  if (!ts) return 0;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === "number") return ts;
+  try {
+    return ts.toMillis();
+  } catch {
+    return 0;
+  }
 }
 
 export async function saveLoanRequest(uid: string, data: { loanAmount: number; purpose: string }): Promise<string> {

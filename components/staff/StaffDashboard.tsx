@@ -9,16 +9,18 @@ import { getStaffRole, type StaffRole } from "@/lib/staff";
 import { listCases, caseStatusLabel, type CaseStatus } from "@/lib/workflow";
 import { CaseQueue } from "./CaseQueue";
 import { AuditTrail } from "./AuditTrail";
+import { CustomerApplications } from "./CustomerApplications";
 import { Counter } from "@/components/effects/Counter";
-import { LogOut, Briefcase, UserCog, ShieldCheck, LayoutDashboard, FolderKanban, History } from "lucide-react";
+import { LogOut, Briefcase, UserCog, ShieldCheck, LayoutDashboard, FolderKanban, History, FileStack } from "lucide-react";
 import { formatINR, cn } from "@/lib/utils";
 
-type Tab = "overview" | "cases" | "audit";
+type Tab = "overview" | "cases" | "audit" | "applications";
 
 const TABS: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "cases", label: "Cases", icon: FolderKanban },
   { id: "audit", label: "Audit Trail", icon: History },
+  { id: "applications", label: "Applications", icon: FileStack },
 ];
 
 export function StaffDashboard() {
@@ -196,6 +198,7 @@ export function StaffDashboard() {
                   )}
 
                   {tab === "cases" && <CaseQueue role={isAgent ? "agent" : "employee"} userEmail={user?.email} />}
+                  {tab === "applications" && <CustomerApplications />}
                   {tab === "audit" && <AuditTrail />}
                 </motion.div>
               </AnimatePresence>

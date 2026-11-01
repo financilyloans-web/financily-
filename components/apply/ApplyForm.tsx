@@ -18,7 +18,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { saveApplication } from "@/lib/firestore";
+import { saveApplication, generateRefNumber } from "@/lib/firestore";
 import { firebaseConfigured } from "@/lib/firebase";
 import { ButtonLink } from "@/components/ui/Button";
 import { cn, formatINR } from "@/lib/utils";
@@ -173,7 +173,7 @@ export function ApplyForm() {
         ref = await saveApplication(payload);
       } else {
         const store = JSON.parse(localStorage.getItem("financily_applications") || "[]");
-        store.unshift({ ...payload, id: `local_${Date.now()}`, createdAt: new Date().toISOString() });
+        store.unshift({ ...payload, refNumber: generateRefNumber(), id: `local_${Date.now()}`, createdAt: new Date().toISOString() });
         localStorage.setItem("financily_applications", JSON.stringify(store));
       }
       setSubmitted(ref);
