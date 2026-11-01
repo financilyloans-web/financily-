@@ -2,31 +2,40 @@
 
 /* ------------------------------------------------------------------ */
 /*  FINANCILY · Design Tokens (Tailwind v4 CSS-first theme)           */
+/*  "Deep luxury dark" — teal/emerald + violet + gold accents.        */
 /* ------------------------------------------------------------------ */
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-space), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
-  --color-ink-950: #04050d;
-  --color-ink-900: #07091a;
-  --color-ink-800: #0b0f24;
-  --color-ink-700: #111636;
-  --color-ink-600: #1b234d;
+  /* Deep, slightly warm ink — richer than the old blue-black */
+  --color-ink-950: #0b0d14;
+  --color-ink-900: #11141e;
+  --color-ink-800: #181c2a;
+  --color-ink-700: #222838;
+  --color-ink-600: #2e3648;
 
-  --color-primary-300: #7fb0ff;
-  --color-primary-400: #4d8dff;
-  --color-primary-500: #2f6bff;
-  --color-primary-600: #1e4fd9;
+  /* Primary — teal/emerald (growth & trust), replacing electric blue */
+  --color-primary-300: #5eead4;
+  --color-primary-400: #2dd4bf;
+  --color-primary-500: #14b8a6;
+  --color-primary-600: #0d9488;
 
-  --color-accent-300: #b79bff;
+  /* Accent — violet for depth and premium feel */
+  --color-accent-300: #c4b5fd;
   --color-accent-500: #8b5cf6;
-  --color-accent-600: #7c3aed;
+  --color-accent-600: #6d28d9;
 
-  --color-cyan-300: #6ef0ff;
-  --color-cyan-400: #3ddcff;
-  --color-cyan-500: #13c4f0;
+  /* Support — soft aqua glow */
+  --color-cyan-300: #7ce9e0;
+  --color-cyan-400: #3fd8cf;
+  --color-cyan-500: #18c6bd;
 
   --color-mint-400: #34f5c5;
+
+  /* Gold highlight for CTAs / ratings — luxury accent */
+  --color-gold-400: #f5c154;
+  --color-gold-500: #eab308;
 
   --animate-marquee: marquee 42s linear infinite;
   --animate-float: float 7s ease-in-out infinite;
@@ -43,7 +52,7 @@
 /* ------------------------------------------------------------------ */
 @layer base {
   * {
-    border-color: color-mix(in oklab, var(--color-primary-300) 12%, transparent);
+    border-color: color-mix(in oklab, var(--color-primary-300) 14%, transparent);
   }
 
   html {
@@ -53,7 +62,7 @@
 
   body {
     background-color: var(--color-ink-950);
-    color: #e7ecff;
+    color: #eceff7;
     font-family: var(--font-sans);
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
@@ -66,23 +75,23 @@
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--color-cyan-400) 40%, transparent);
+    background: color-mix(in oklab, var(--color-primary-400) 40%, transparent);
     color: #ffffff;
   }
 
   /* Amber / nice scrollbar */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: #06070f; }
+  ::-webkit-scrollbar-track { background: #0a0c12; }
   ::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, var(--color-primary-500), var(--color-accent-600));
     border-radius: 999px;
-    border: 2px solid #06070f;
+    border: 2px solid #0a0c12;
   }
 
   input, textarea, select, button { font: inherit; }
 
   :focus-visible {
-    outline: 2px solid var(--color-cyan-400);
+    outline: 2px solid var(--color-primary-400);
     outline-offset: 2px;
   }
 }
@@ -92,40 +101,40 @@
 /* ------------------------------------------------------------------ */
 @layer components {
   .glass {
-    background: color-mix(in oklab, #ffffff 6%, transparent);
+    background: color-mix(in oklab, #ffffff 5%, transparent);
     backdrop-filter: blur(18px) saturate(150%);
     -webkit-backdrop-filter: blur(18px) saturate(150%);
-    border: 1px solid color-mix(in oklab, #ffffff 14%, transparent);
-    box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.6);
+    border: 1px solid color-mix(in oklab, #ffffff 12%, transparent);
+    box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.55);
   }
 
   .glass-strong {
-    background: linear-gradient(150deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+    background: linear-gradient(150deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
     backdrop-filter: blur(24px) saturate(160%);
     -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 16px 50px -12px rgba(3, 5, 20, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 16px 50px -12px rgba(3, 5, 18, 0.85);
   }
 
   /* Near-opaque raised surface for floating UI chrome (navbar, chatbot,
      menus, consent banners) so content stays legible over the animated
      background instead of blending into it. */
   .surface-solid {
-    background: linear-gradient(165deg, rgba(11, 14, 34, 0.92), rgba(6, 8, 20, 0.94));
+    background: linear-gradient(165deg, rgba(17, 20, 30, 0.92), rgba(11, 13, 20, 0.95));
     backdrop-filter: blur(26px) saturate(150%);
     -webkit-backdrop-filter: blur(26px) saturate(150%);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 18px 50px -14px rgba(2, 4, 16, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 18px 50px -14px rgba(2, 4, 12, 0.9);
   }
 
   .neo {
     box-shadow:
       6px 6px 16px rgba(0, 0, 0, 0.55),
-      -6px -6px 16px rgba(255, 255, 255, 0.035);
+      -6px -6px 16px rgba(255, 255, 255, 0.03);
   }
 
   .text-gradient {
-    background-image: linear-gradient(92deg, var(--color-cyan-300), var(--color-primary-300) 40%, var(--color-accent-300) 75%, #f0abfc);
+    background-image: linear-gradient(92deg, var(--color-cyan-300), var(--color-primary-300) 40%, var(--color-accent-300) 75%, #f5c154);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -133,9 +142,9 @@
 
   .bg-aurora {
     background:
-      radial-gradient(1200px 600px at 10% -10%, rgba(47, 107, 255, 0.22), transparent 60%),
-      radial-gradient(1000px 500px at 110% 10%, rgba(124, 58, 237, 0.20), transparent 55%),
-      radial-gradient(900px 600px at 50% 120%, rgba(19, 196, 240, 0.12), transparent 60%);
+      radial-gradient(1200px 600px at 10% -10%, rgba(20, 184, 166, 0.20), transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, rgba(109, 40, 217, 0.20), transparent 55%),
+      radial-gradient(900px 600px at 50% 120%, rgba(24, 198, 189, 0.10), transparent 60%);
   }
 
   .btn-primary {
@@ -145,11 +154,11 @@
     justify-content: center;
     gap: 0.5rem;
     font-weight: 600;
-    color: #ffffff;
+    color: #0b0d14;
     border-radius: 999px;
     padding: 0.875rem 1.75rem;
-    background-image: linear-gradient(92deg, var(--color-primary-600), var(--color-accent-600));
-    box-shadow: 0 10px 30px -8px rgba(47, 107, 255, 0.65), inset 0 1px 0 rgba(255,255,255,0.25);
+    background-image: linear-gradient(92deg, var(--color-cyan-400), var(--color-primary-400) 45%, var(--color-gold-400));
+    box-shadow: 0 10px 30px -8px rgba(20, 184, 166, 0.55), inset 0 1px 0 rgba(255,255,255,0.4);
     transition: transform .25s cubic-bezier(.5,1.6,.4,.8), box-shadow .3s, filter .3s;
     isolation: isolate;
     overflow: hidden;
@@ -159,11 +168,11 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background-image: linear-gradient(92deg, var(--color-cyan-500), var(--color-primary-400));
+    background-image: linear-gradient(92deg, var(--color-primary-400), var(--color-cyan-400) 60%, var(--color-gold-400));
     opacity: 0;
     transition: opacity .3s;
   }
-  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -8px rgba(61, 220, 255, 0.5); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -8px rgba(24, 198, 189, 0.5); }
   .btn-primary:hover::after { opacity: 1; }
   .btn-primary:active { transform: translateY(0) scale(0.98); }
 
@@ -173,18 +182,18 @@
     justify-content: center;
     gap: 0.5rem;
     font-weight: 600;
-    color: #dfe7ff;
+    color: #e7ebf5;
     border-radius: 999px;
     padding: 0.875rem 1.75rem;
-    border: 1px solid color-mix(in oklab, #ffffff 18%, transparent);
+    border: 1px solid color-mix(in oklab, #ffffff 16%, transparent);
     background: color-mix(in oklab, #ffffff 4%, transparent);
     backdrop-filter: blur(12px);
     transition: transform .25s, border-color .3s, background .3s, box-shadow .3s;
   }
   .btn-ghost:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in oklab, var(--color-cyan-400) 55%, transparent);
-    box-shadow: 0 12px 34px -10px rgba(61, 220, 255, 0.35);
+    border-color: color-mix(in oklab, var(--color-primary-400) 55%, transparent);
+    box-shadow: 0 12px 34px -10px rgba(24, 198, 189, 0.3);
   }
 
   .card-hover {
@@ -192,28 +201,28 @@
   }
   .card-hover:hover {
     transform: translateY(-6px);
-    border-color: color-mix(in oklab, var(--color-cyan-400) 35%, transparent);
-    box-shadow: 0 24px 60px -18px rgba(47, 107, 255, 0.45);
+    border-color: color-mix(in oklab, var(--color-primary-400) 35%, transparent);
+    box-shadow: 0 24px 60px -18px rgba(20, 184, 166, 0.4);
   }
 
   .input-glass {
     width: 100%;
     border-radius: 0.9rem;
-    border: 1px solid color-mix(in oklab, #ffffff 14%, transparent);
-    background: color-mix(in oklab, #ffffff 5%, transparent);
+    border: 1px solid color-mix(in oklab, #ffffff 13%, transparent);
+    background: color-mix(in oklab, #ffffff 4%, transparent);
     backdrop-filter: blur(12px);
     padding: 0.8rem 1rem;
     color: #f0f4ff;
     transition: border-color .3s, box-shadow .3s, background .3s;
   }
-  .input-glass::placeholder { color: rgba(180, 195, 240, 0.55); }
+  .input-glass::placeholder { color: rgba(175, 190, 220, 0.55); }
   .input-glass:focus {
     outline: none;
-    border-color: var(--color-cyan-400);
-    background: color-mix(in oklab, #ffffff 8%, transparent);
-    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-cyan-400) 15%, transparent);
+    border-color: var(--color-primary-400);
+    background: color-mix(in oklab, #ffffff 7%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary-400) 15%, transparent);
   }
-  select.input-glass option { background-color: var(--color-ink-900); color: #e7ecff; }
+  select.input-glass option { background-color: var(--color-ink-900); color: #eceff7; }
 
   .chip {
     display: inline-flex;
@@ -223,9 +232,9 @@
     padding: 0.4rem 0.95rem;
     font-size: 0.8rem;
     font-weight: 500;
-    border: 1px solid color-mix(in oklab, var(--color-cyan-400) 30%, transparent);
-    background: color-mix(in oklab, var(--color-cyan-500) 8%, transparent);
-    color: var(--color-cyan-300);
+    border: 1px solid color-mix(in oklab, var(--color-primary-400) 30%, transparent);
+    background: color-mix(in oklab, var(--color-primary-500) 8%, transparent);
+    color: var(--color-primary-300);
   }
 
   .section-shell {
@@ -274,14 +283,14 @@
 }
 
 .animate-shimmer {
-  background-image: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+  background-image: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
   background-size: 200% 100%;
 }
 
 .animate-grid {
   background-image:
-    linear-gradient(to right, rgba(120, 160, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(120, 160, 255, 0.07) 1px, transparent 1px);
+    linear-gradient(to right, rgba(94, 234, 212, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(94, 234, 212, 0.06) 1px, transparent 1px);
   background-size: 56px 56px;
 }
 
