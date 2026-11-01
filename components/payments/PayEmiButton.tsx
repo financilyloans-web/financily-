@@ -132,6 +132,12 @@ export function PayEmiButton({
           ? { name: customer.name, email: customer.email, phone: customer.phoneNumber }
           : undefined,
         metadata: { source: "financily-pay-emi" },
+        // Documented callback shape: response carries status + utr. This is a
+        // UI hint only — final confirmation still goes through /youpi-verify.
+        handler: (response) => {
+          // eslint-disable-next-line no-console
+          console.log(`YouPI checkout status: ${response.status}; UTR: ${response.utr || "—"}`);
+        },
         onClose: () => {
           setState((s) => (s.status === "loading" ? { status: "idle" } : s));
         },

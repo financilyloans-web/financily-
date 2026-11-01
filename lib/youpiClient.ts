@@ -26,6 +26,8 @@ export interface YoupiPayOptions {
   orderId: string;
   amount: number; // in rupees (whole units, e.g. 499)
   currency?: string;
+  /** Merchant display name shown in the checkout (defaults to "Financily"). */
+  name?: string;
   description?: string;
   customer?: YoupiCustomer;
   metadata?: Record<string, unknown>;
@@ -48,6 +50,10 @@ interface YoupiGlobal {
     order_id: string;
     amount: number;
     currency: string;
+    /** Merchant display name shown in the checkout (e.g. "Financily"). */
+    name?: string;
+    /** Line-item / order description shown in the checkout. */
+    description?: string;
     customer?: { name?: string; email?: string; phone?: string };
     metadata?: Record<string, unknown>;
     handler?: (response: YoupiPaymentResult) => void;
@@ -161,16 +167,15 @@ export function loadYoupi(): Promise<YoupiGlobal> {
 
 export async function payWithYoupi(options: YoupiPayOptions): Promise<void> {
   const youpi = await loadYoupi();
-  const metadata: Record<string, unknown> = {
-    ...(options.metadata || {}),
-  };
-  if (options.description) metadata.description = options.description;
   youpi.pay({
     order_id: options.orderId,
     amount: options.amount,
     currency: options.currency || "INR",
+    // Top-level merchant + line-item fields as documented by the YouPI API.
+    name: options.name || "Financily",
+    description: options.description,
     customer: options.customer,
-    metadata,
+    metadata: options.metadata,
     handler: options.handler,
     onClose: options.onClose,
   });
