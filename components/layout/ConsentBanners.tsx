@@ -39,7 +39,7 @@ export function ConsentBanners() {
             exit={{ y: 100, opacity: 0 }}
             className="fixed bottom-4 left-4 right-4 z-[70] sm:left-6 sm:right-auto sm:max-w-md"
           >
-            <div className="glass-strong rounded-3xl p-5">
+            <div className="surface-solid rounded-3xl p-5">
               <div className="flex items-start gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-400/15 text-cyan-300">
                   <Cookie className="h-5 w-5" />
@@ -77,7 +77,7 @@ export function ConsentBanners() {
             exit={{ opacity: 0, y: 20 }}
             className="fixed bottom-4 left-4 right-4 z-[70] sm:left-auto sm:right-6 sm:max-w-lg"
           >
-            <div className="glass-strong rounded-3xl p-5 ring-1 ring-primary-400/30">
+            <div className="surface-solid rounded-3xl p-5 ring-1 ring-primary-400/30">
               <p className="font-semibold text-white">Your privacy matters</p>
               <p className="mt-1 text-sm text-slate-300/80">
                 We collect and process your data only with your consent, in line

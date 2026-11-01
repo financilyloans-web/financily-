@@ -53,7 +53,7 @@ export function Header() {
         <div
           className={cn(
             "flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 transition-all duration-500 sm:px-5",
-            scrolled ? "glass-strong" : "bg-transparent border border-transparent",
+            scrolled ? "surface-solid" : "border border-white/5 bg-ink-950/40 backdrop-blur-xl",
           )}
         >
           <Logo />
@@ -133,7 +133,7 @@ export function Header() {
             transition={{ duration: 0.25 }}
             className="fixed inset-x-3 top-20 z-40 lg:hidden"
           >
-            <div className="glass-strong rounded-3xl p-4">
+            <div className="surface-solid rounded-3xl p-4">
               <nav className="flex flex-col gap-1" aria-label="Mobile">
                 {NAV.map((item, i) => (
                   <motion.div

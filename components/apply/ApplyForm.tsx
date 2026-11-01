@@ -22,8 +22,9 @@ import { saveApplication } from "@/lib/firestore";
 import { firebaseConfigured } from "@/lib/firebase";
 import { ButtonLink } from "@/components/ui/Button";
 import { cn, formatINR } from "@/lib/utils";
-import { PINCodes, findByPincode } from "@/lib/pincodes";
+import { findByPincode } from "@/lib/pincodes";
 import { buildSecureKyc } from "@/lib/kyc";
+import { PincodeSelect } from "./PincodeSelect";
 import Link from "next/link";
 
 const STEPS = [
@@ -105,16 +106,6 @@ export function ApplyForm() {
       if (!form.city.trim()) return "Please enter your city.";
     }
     return null;
-  };
-
-  const onPincodeChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 6);
-    set("pincode", digits);
-    const match = findByPincode(digits);
-    if (match) {
-      set("city", match.city);
-      set("state", match.state);
-    }
   };
 
   // When the pincode matches the dataset, city/state are locked to the
@@ -304,51 +295,90 @@ export function ApplyForm() {
           )}
 
           {step === 1 && (
-            <div className="space-y-4">
-              <h2 className="font-display text-xl font-bold text-white">Identity details</h2>
-              <p className="text-sm text-slate-400">
-                PAN and Aadhaar are used for KYC and lender verification. They are
-                encrypted and only shared with lenders you consent to.
-              </p>
-              <Field label="PAN number">
-                <input
-                  className="input-glass uppercase"
-                  value={form.pan}
-                  onChange={(e) => set("pan", e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 10))}
-                  placeholder="ABCDE1234F"
-                />
-              </Field>
-              <Field label="Aadhaar number">
-                <div className="relative">
-                  <input
-                    className="input-glass pr-12 tracking-widest"
-                    value={revealAadhaar ? form.aadhaar : AadhaarMask(form.aadhaar)}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, "").slice(0, 12);
-                      set("aadhaar", digits);
-                      if (digits.length !== 12) setRevealAadhaar(false);
-                    }}
-                    placeholder="12-digit Aadhaar"
-                    inputMode="numeric"
-                  />
-                  {form.aadhaar.replace(/\D/g, "").length === 12 && (
-                    <button
-                      type="button"
-                      onClick={() => setRevealAadhaar((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                      aria-label={revealAadhaar ? "Hide Aadhaar" : "Show Aadhaar"}
-                    >
-                      {revealAadhaar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+            <div className="space-y-5">
+              <div>
+                <h2 className="font-display text-xl font-bold text-white">Identity details</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  PAN and Aadhaar are used for KYC and lender verification. They are
+                  encrypted and only shared with lenders you consent to.
+                </p>
+              </div>
+
+              {/* PAN card */}
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <IdCard className="h-4 w-4 text-cyan-300" /> PAN Card
+                  </span>
+                  {form.pan.replace(/\s/g, "").length === 10 && (
+                    <span className="flex items-center gap-1 text-xs text-emerald-300">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Verified format
+                    </span>
                   )}
                 </div>
-                {form.aadhaar.replace(/\D/g, "").length === 12 && !revealAadhaar && (
-                  <p className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-300">
-                    <Lock className="h-3 w-3" /> Masked for privacy. We never store your full
-                    Aadhaar — only its last 4 digits (salted hash).
-                  </p>
-                )}
-              </Field>
+                <div className="mt-3">
+                  <input
+                    className="input-glass text-lg font-display font-semibold uppercase tracking-[0.18em]"
+                    value={form.pan}
+                    onChange={(e) => set("pan", e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 10))}
+                    placeholder="ABCDE1234F"
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  10 characters · first 5 letters, next 4 digits, last letter.
+                </p>
+              </div>
+
+              {/* Aadhaar card */}
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] p-5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <IdCard className="h-4 w-4 text-cyan-300" /> Aadhaar Card
+                  </span>
+                  {form.aadhaar.replace(/\D/g, "").length === 12 && !revealAadhaar && (
+                    <span className="flex items-center gap-1 text-xs text-emerald-300">
+                      <Lock className="h-3.5 w-3.5" /> Masked · last 4 only
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3">
+                  <div className="relative">
+                    <input
+                      className={cn(
+                        "input-glass text-lg font-display font-semibold tracking-widest",
+                        form.aadhaar.replace(/\D/g, "").length === 12 && !revealAadhaar && "text-cyan-200",
+                      )}
+                      value={revealAadhaar ? form.aadhaar : AadhaarMask(form.aadhaar)}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 12);
+                        set("aadhaar", digits);
+                        if (digits.length !== 12) setRevealAadhaar(false);
+                      }}
+                      placeholder="XXXX XXXX 0000"
+                      inputMode="numeric"
+                      onBlur={() => {
+                        // On blur, always settle into masked (last-4) view.
+                        if (form.aadhaar.replace(/\D/g, "").length === 12) setRevealAadhaar(false);
+                      }}
+                    />
+                    {form.aadhaar.replace(/\D/g, "").length === 12 && (
+                      <button
+                        type="button"
+                        onClick={() => setRevealAadhaar((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        aria-label={revealAadhaar ? "Hide Aadhaar" : "Show Aadhaar"}
+                      >
+                        {revealAadhaar ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {form.aadhaar.replace(/\D/g, "").length === 12 && !revealAadhaar
+                    ? "Your full Aadhaar is hidden. We never store it — only the last 4 digits (salted hash)."
+                    : "12 digits · auto-masked after entry for your safety."}
+                </p>
+              </div>
             </div>
           )}
 
@@ -389,19 +419,16 @@ export function ApplyForm() {
                 <input className="input-glass" value={form.addressLine2} onChange={(e) => set("addressLine2", e.target.value)} placeholder="e.g. Near city centre mall" />
               </Field>
               <Field label="Pincode">
-                <input
-                  className="input-glass"
+                <PincodeSelect
                   value={form.pincode}
-                  onChange={(e) => onPincodeChange(e.target.value)}
-                  placeholder="Enter 6-digit pincode"
-                  inputMode="numeric"
-                  list="pincode-list"
+                  city={form.city}
+                  state={form.state}
+                  onChange={(pin, city, state) => {
+                    set("pincode", pin);
+                    set("city", city);
+                    set("state", state);
+                  }}
                 />
-                <datalist id="pincode-list">
-                  {PINCodes.map((pin) => (
-                    <option key={pin.p} value={pin.p}>{pin.city}, {pin.state}</option>
-                  ))}
-                </datalist>
               </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="City">
@@ -435,7 +462,7 @@ export function ApplyForm() {
                 </p>
               ) : (
                 <p className="text-xs text-slate-500">
-                  Enter a valid pincode to auto-fill city and state, or type them manually.
+                  Search India&apos;s pincodes to auto-fill city and state, or type them manually.
                 </p>
               )}
             </div>

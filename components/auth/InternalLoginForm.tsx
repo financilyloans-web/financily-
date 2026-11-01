@@ -7,8 +7,9 @@ import { LogIn, Mail, Lock, Eye, EyeOff, Loader2, UserCog, Briefcase, ShieldChec
 import { AuthShell } from "./AuthShell";
 import { useAuth } from "./AuthProvider";
 import { cn } from "@/lib/utils";
+import { getStaffRole, roleMatches, type StaffRole } from "@/lib/staff";
 
-type Role = "agent" | "employee";
+type Role = StaffRole;
 
 const ROLES: { id: Role; label: string; icon: typeof Briefcase; hint: string }[] = [
   { id: "agent", label: "Agent Login", icon: Briefcase, hint: "For field agents & partners" },
@@ -16,7 +17,7 @@ const ROLES: { id: Role; label: string; icon: typeof Briefcase; hint: string }[]
 ];
 
 export function InternalLoginForm() {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, logout } = useAuth();
   const router = useRouter();
 
   const [role, setRole] = useState<Role>("agent");
@@ -30,11 +31,38 @@ export function InternalLoginForm() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    let firebaseUser: { email?: string | null; uid?: string } | null = null;
     try {
-      await signInWithEmail(email, password);
+      const user = await signInWithEmail(email, password);
+      firebaseUser = user;
+      const provisioned = await getStaffRole(user.email ?? email);
+
+      if (!roleMatches(provisioned, role)) {
+        // Role mismatch (or unprovisioned account): do NOT allow access. Sign
+        // the user back out so they can't stay authenticated in the wrong role.
+        await logout();
+        setError(
+          provisioned
+            ? `This account is provisioned as an ${provisioned}. Please use the ${
+                provisioned === "agent" ? "Agent Login" : "Employee Login"
+              } tab.`
+            : "This account is not provisioned for the internal portal. Contact Financily admin to assign a role.",
+        );
+        return;
+      }
+
       sessionStorage.setItem("financily_staff_role", role);
       router.push("/staff");
     } catch (err: any) {
+      // If Firebase auth succeeded but our role check threw, make sure we
+      // didn't leave the user signed in to the wrong portal.
+      if (firebaseUser) {
+        try {
+          await logout();
+        } catch {
+          /* ignore */
+        }
+      }
       setError(err?.message?.replace("Firebase: ", "") || "Login failed. Please try again.");
     } finally {
       setLoading(false);

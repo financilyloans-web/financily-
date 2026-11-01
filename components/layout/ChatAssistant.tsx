@@ -78,7 +78,7 @@ export function ChatAssistant() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 300, damping: 26 }}
-            className="fixed bottom-20 right-5 z-[70] flex h-[480px] w-[calc(100vw-2.5rem)] max-w-sm flex-col overflow-hidden rounded-3xl glass-strong sm:right-6"
+            className="surface-solid fixed bottom-20 right-5 z-[70] flex h-[480px] w-[calc(100vw-2.5rem)] max-w-sm flex-col overflow-hidden rounded-3xl sm:right-6"
           >
             <div className="flex items-center gap-3 border-b border-white/10 bg-gradient-to-r from-primary-600/40 to-accent-600/40 px-4 py-3.5">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-primary-500 text-white shadow-lg">

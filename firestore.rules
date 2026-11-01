@@ -23,6 +23,53 @@ service cloud.firestore {
         && rawKycBlocked();
     }
 
+    // Internal staff roster (email -> role). Reads are scoped to the user's
+    // OWN email: an authenticated user may read exactly their own staff doc.
+    // This lets an agent/employee verify their own role at login while
+    // preventing a public user from enumerating the whole roster (a list/all
+    // query would fail the rule, leaking no other emails). Writes are admin-only.
+    //
+    // Staff docs MUST be keyed by the normalized email (document id == email).
+    // This is the canonical layout. The `exists()` check below (used to gate the
+    // internal `cases` and `workflow_history` collections) relies on that doc id,
+    // and Firestore rules cannot query by field — so `lib/staff.ts` uses the same
+    // canonical doc-id lookup. Legacy auto-ID docs are not supported.
+    function staffDocNamed(email) {
+      return email != null
+        && exists(/databases/$(database)/documents/staff/$(email));
+    }
+
+    match /staff/{staffId} {
+      allow read: if request.auth != null
+        && request.auth.token.email != null
+        && (staffId == request.auth.token.email
+            || resource.data.email == request.auth.token.email);
+      allow write: if false;
+    }
+
+    // Staff case-management collections. Only authenticated members of the
+    // staff roster may read/write cases, and the audit trail is append-only.
+    // This keeps applicant loan data private to the internal team.
+    match /cases/{caseId} {
+      allow read: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+      allow create, update: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+      allow delete: if false;
+    }
+
+    match /workflow_history/{eventId} {
+      allow read: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+      allow create: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+      allow update, delete: if false;
+    }
+
     // Lead capture is authenticated and append-only. Only the signed-in user
     // may record a lead under their own uid; the project owner reads via the
     // console. Raw KYC is always blocked.
