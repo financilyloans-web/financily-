@@ -1,11 +1,12 @@
 import { getDoc, doc } from "firebase/firestore";
 import { db } from "./firebase";
 
-export type StaffRole = "agent" | "employee";
+export type StaffRole = "agent" | "employee" | "admin";
 
 export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
   agent: "Agent",
   employee: "Employee",
+  admin: "Admin",
 };
 
 function normalizeEmail(email: string): string {
@@ -32,7 +33,9 @@ export async function getStaffRole(email: string): Promise<StaffRole | null> {
     const direct = await getDoc(doc(db, "staff", normalized));
     if (!direct.exists()) return null;
     const role = direct.data().role;
-    return role === "agent" || role === "employee" ? (role as StaffRole) : null;
+    return role === "agent" || role === "employee" || role === "admin"
+      ? (role as StaffRole)
+      : null;
   } catch {
     return null;
   }

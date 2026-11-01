@@ -31,12 +31,14 @@
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
+const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 
 const EMAIL = process.argv[2];
 const ROLE = (process.argv[3] || "employee").toLowerCase();
+const PASSWORD = process.env.STAFF_PASSWORD || process.argv[4] || "";
 
-const VALID_ROLES = new Set(["agent", "employee"]);
+const VALID_ROLES = new Set(["agent", "employee", "admin"]);
 
 const KEY_PATH =
   process.env.SERVICE_ACCOUNT_PATH ||
@@ -56,7 +58,7 @@ async function main() {
     fail('Usage: node tools/provision-staff.cjs <email> [agent|employee]');
   }
   if (!VALID_ROLES.has(ROLE)) {
-    fail(`Role must be "agent" or "employee" (got "${ROLE}").`);
+    fail(`Role must be "agent", "employee" or "admin" (got "${ROLE}").`);
   }
   if (!fs.existsSync(KEY_PATH)) {
     fail(
@@ -93,11 +95,41 @@ async function main() {
   }
   const data = snap.data();
 
+  // 3. Optionally create/update the Firebase Auth user (email + password).
+  //     Without this, the staff member has a roster entry but no login
+  //     credential. Required for the account to actually sign in.
+  if (PASSWORD) {
+    if (PASSWORD.length < 6) {
+      fail("Password must be at least 6 characters.");
+    }
+    const auth = getAuth(admin.getApps()[0]);
+    let uid = null;
+    try {
+      const u = await auth.getUserByEmail(email);
+      uid = u.uid;
+      await auth.updateUser(uid, { password: PASSWORD });
+      console.log(`✔ Auth user found — password updated (${email})`);
+    } catch (e) {
+      if (e.code === "auth/user-not-found") {
+        const u = await auth.createUser({ email, password: PASSWORD });
+        uid = u.uid;
+        console.log(`✔ Auth user created (${email})`);
+      } else {
+        throw e;
+      }
+    }
+    console.log(`  Auth UID : ${uid}`);
+  } else {
+    console.log(`⚠ No STAFF_PASSWORD set — Auth user NOT created (login unavailable).`);
+  }
+
   console.log(`✔ Provisioned staff member`);
   console.log(`  Document : staff/${email}`);
   console.log(`  Role     : ${data.role}`);
   console.log(`  Project  : ${projectId}`);
-  console.log(`\nThey can now sign in at /staff-login using role "${data.role}".`);
+  console.log(`\nThey can now sign in using role "${data.role}" ${
+    data.role === "admin" ? "at /admin-login" : "at /staff-login"
+  }.`);
 }
 
 main().catch((err) => {

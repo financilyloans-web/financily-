@@ -39,11 +39,21 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/staff/$(email));
     }
 
+    // True when the authenticated user is provisioned as an admin.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role == 'admin';
+    }
+
     match /staff/{staffId} {
-      allow read: if request.auth != null
+      // A staff member may read their own doc; admins may read the whole
+      // roster (to manage accounts). Writes are server-only (Admin SDK).
+      allow read: if (request.auth != null
         && request.auth.token.email != null
         && (staffId == request.auth.token.email
-            || resource.data.email == request.auth.token.email);
+            || resource.data.email == request.auth.token.email))
+        || isAdmin();
       allow write: if false;
     }
 
