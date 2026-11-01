@@ -20,6 +20,9 @@ yarn-error.log*
 .env*.local
 .env.*.local
 
+# firebase service-account key — never commit
+/staff/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
