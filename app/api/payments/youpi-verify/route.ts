@@ -3,6 +3,7 @@ import {
   verifyYoupiOrder,
   youpiConfigured,
 } from "@/lib/youpi";
+import { adminAuth } from "@/lib/firebaseAdmin";
 
 /**
  * POST /api/payments/youpi-verify
@@ -12,10 +13,27 @@ import {
  * this endpoint after the payment flow, and we ask the YouPI gateway directly
  * (authenticated with the merchant API key) whether the order was actually paid.
  *
- * Only when the gateway confirms a settled status do we return `confirmed: true`
- * — and only then should the UI show success.
+ * Only when the gateway confirms a settled status, the order identity matches,
+ * and the amount matches do we return `confirmed: true` — and only then should
+ * the UI show success.
+ *
+ * AUTH: The caller must present a valid Firebase ID token. This prevents
+ * unauthenticated callers from enumerating orders or leaking payment state.
  */
 export async function POST(req: NextRequest) {
+  // 1. Require an authenticated caller. Reject early to avoid exposing any
+  //    gateway state to unauthenticated clients.
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) {
+    return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+  }
+  try {
+    await adminAuth().verifyIdToken(token);
+  } catch {
+    return NextResponse.json({ error: "Invalid or expired authorization token." }, { status: 401 });
+  }
+
   if (!youpiConfigured()) {
     return NextResponse.json(
       { error: "Payment gateway is not configured yet.", confirmed: false },

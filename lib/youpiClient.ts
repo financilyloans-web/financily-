@@ -72,13 +72,40 @@ export function youpiClientConfigured(): boolean {
 
 let loadPromise: Promise<YoupiGlobal> | null = null;
 
+/**
+ * Trusted-origin pinning. Only an https checkout URL (or localhost during
+ * development) is accepted. Prevents a misconfigured/compromised `http` URL
+ * from loading untrusted script into the merchant page.
+ */
+function isTrustedCheckoutOrigin(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") {
+      return u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1");
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function injectScript(): Promise<YoupiGlobal> {
   const checkoutUrl = process.env.NEXT_PUBLIC_YOUPI_CHECKOUT_URL;
   const publicKey = process.env.NEXT_PUBLIC_YOUPI_PUBLIC_KEY;
+  const integrity = process.env.NEXT_PUBLIC_YOUPI_SCRIPT_INTEGRITY;
+
   if (!checkoutUrl || !publicKey) {
     return Promise.reject(
       new Error(
         "YouPI payment gateway is not configured. Add NEXT_PUBLIC_YOUPI_CHECKOUT_URL and NEXT_PUBLIC_YOUPI_PUBLIC_KEY.",
+      ),
+    );
+  }
+
+  if (!isTrustedCheckoutOrigin(checkoutUrl)) {
+    return Promise.reject(
+      new Error(
+        "YouPI checkout URL must be https (or localhost), and is not trusted.",
       ),
     );
   }
@@ -105,6 +132,13 @@ function injectScript(): Promise<YoupiGlobal> {
     script.setAttribute("data-youpi-key", publicKey);
     script.setAttribute("data-currency", "INR");
     script.async = true;
+
+    // Subresource Integrity (SRI) pinning when a hash is configured. Requires
+    // crossorigin="anonymous" for the hash to take effect.
+    if (integrity) {
+      script.integrity = integrity;
+      script.crossOrigin = "anonymous";
+    }
 
     script.onload = () => {
       const poll = () => {

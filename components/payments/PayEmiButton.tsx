@@ -6,6 +6,7 @@ import { Loader2, X, CreditCard, ShieldCheck, AlertTriangle, CheckCircle2 } from
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { PAYMENT_RECEIVER } from "@/lib/paymentReceiver";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   payWithYoupi,
   youpiClientConfigured,
@@ -31,14 +32,18 @@ type ModalState = {
 /**
  * Authoritative server-side verification. The browser-success `youpi:payment:success`
  * event is a spoofable UI hint — we never trust it on its own. We call the
- * backend, which asks the YouPI gateway (merchant key) for the real status and
- * only returns `confirmed: true` for a settled payment.
+ * backend (authenticated with the user's Firebase ID token), which asks the
+ * YouPI gateway (merchant key) for the real status and only returns
+ * `confirmed: true` for a settled, amount-matched payment belonging to that order.
  */
-async function verifyPayment(orderId: string, paymentId: string, amount: number): Promise<boolean> {
+async function verifyPayment(idToken: string, orderId: string, paymentId: string, amount: number): Promise<boolean> {
   try {
     const res = await fetch("/api/payments/youpi-verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
       body: JSON.stringify({ orderId, paymentId, amount }),
     });
     const data = await res.json().catch(() => ({}));
@@ -61,6 +66,7 @@ export function PayEmiButton({
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<ModalState>({ status: "idle" });
   const [configured] = useState(() => youpiClientConfigured());
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!open) return;
@@ -69,7 +75,16 @@ export function PayEmiButton({
         // The client event is ONLY a trigger — verify with the backend/gateway
         // before showing success.
         setState((s) => ({ ...s, status: "loading" }));
-        verifyPayment(orderId, orderId, amount).then((confirmed) => {
+        const runVerify = async () => {
+          const idToken = await user?.getIdToken(true).catch(() => undefined);
+          if (!idToken) {
+            setState({
+              status: "error",
+              error: "Please sign in to confirm your payment.",
+            });
+            return;
+          }
+          const confirmed = await verifyPayment(idToken, orderId, orderId, amount);
           setState((s) =>
             confirmed
               ? { status: "success" }
@@ -79,7 +94,8 @@ export function PayEmiButton({
                     "We're still confirming your payment with the bank. Please check back shortly.",
                 },
           );
-        });
+        };
+        runVerify();
       } else if (detail.status === "FAILED" || detail.status === "SUSPICIOUS") {
         setState({ status: "error", error: `Payment was ${detail.status.toLowerCase()}. You can retry.` });
       } else if (detail.status === "EXPIRED") {

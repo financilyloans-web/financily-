@@ -172,23 +172,41 @@ export async function verifyYoupiOrder(
     );
   }
 
-  const status: string = data?.status || data?.paymentStatus || "";
+  const status: string = String(
+    data?.status || data?.paymentStatus || "",
+  ).toUpperCase();
   const settledStatuses = ["SUCCESS", "OBSERVED_SUCCESS", "RECONCILED"];
-  const confirmed = settledStatuses.includes(status.toUpperCase());
+  const settled = settledStatuses.includes(status);
 
-  // Optional amount cross-check when the gateway reports it.
-  let amountMatch = true;
-  if (
-    typeof input.amount === "number" &&
-    typeof data?.amount === "number" &&
-    data.amount > 0
-  ) {
-    amountMatch = Math.abs(data.amount - input.amount) < 0.01;
+  // Order identity cross-check — never fall back silently via `||`. If the
+  // gateway returns an orderId/paymentId, it MUST match the requested order,
+  // otherwise we treat the response as not belonging to this verification.
+  const returnedOrderId = data?.orderId ? String(data.orderId) : "";
+  const returnedPaymentId = data?.paymentId ? String(data.paymentId) : "";
+  const orderMatches = !returnedOrderId || returnedOrderId === input.orderId;
+  const paymentMatches =
+    !input.paymentId || !returnedPaymentId || returnedPaymentId === input.paymentId;
+
+  // Fail-closed amount check: if the caller expects an amount, we require the
+  // gateway to report an explicit, matching amount. If the gateway omits the
+  // amount (or returns a non-numeric value), amountMatch stays false and the
+  // payment is NOT confirmed — a compromised/partial gateway cannot pass a
+  // lesser amount.
+  let amountMatch = false;
+  if (typeof input.amount === "number" && Number.isFinite(input.amount)) {
+    const rawAmount = data?.amount ?? data?.amountPaise;
+    const parsed =
+      typeof rawAmount === "number" ? rawAmount : Number.parseFloat(rawAmount);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      amountMatch = Math.abs(parsed - input.amount) < 0.01;
+    }
   }
 
+  const confirmed = settled && orderMatches && paymentMatches && amountMatch;
+
   return {
-    orderId: data?.orderId || input.orderId,
-    paymentId: data?.paymentId || input.paymentId,
+    orderId: returnedOrderId || input.orderId,
+    paymentId: returnedPaymentId || input.paymentId,
     confirmed,
     status,
     amountMatch,
