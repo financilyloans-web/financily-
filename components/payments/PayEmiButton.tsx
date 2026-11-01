@@ -123,10 +123,49 @@ export function PayEmiButton({
       return;
     }
     setState({ status: "loading" });
+
     try {
+      // 1. Resolve the AUTHORITATIVE order from the backend. We never trust the
+      //    orderId/amount passed via props — a tampered page could otherwise
+      //    charge the wrong amount for the wrong order.
+      const idToken = await user?.getIdToken(true).catch(() => undefined);
+      if (!idToken) {
+        setState({ status: "error", error: "Please sign in to pay." });
+        return;
+      }
+
+      const orderRes = await fetch(
+        `/api/payments/youpi-order?orderId=${encodeURIComponent(orderId)}`,
+        { headers: { Authorization: `Bearer ${idToken}` } },
+      );
+      const orderData = await orderRes.json().catch(() => ({}));
+      if (!orderRes.ok) {
+        setState({
+          status: "error",
+          error: orderData?.error || "Could not resolve the order.",
+        });
+        return;
+      }
+
+      // 2. Reject any mismatch between the props and the authoritative order.
+      //    We also use the authoritative values for the actual checkout.
+      if (
+        !orderData.orderId ||
+        orderData.orderId !== orderId ||
+        typeof orderData.amount !== "number" ||
+        Math.round(orderData.amount) !== Math.round(amount)
+      ) {
+        setState({
+          status: "error",
+          error: "Payment details do not match the order. Please refresh and try again.",
+        });
+        return;
+      }
+
+      // 3. Start checkout with the server-verified amount/orderId.
       await payWithYoupi({
-        orderId,
-        amount,
+        orderId: orderData.orderId,
+        amount: orderData.amount,
         description,
         customer: customer
           ? { name: customer.name, email: customer.email, phone: customer.phoneNumber }

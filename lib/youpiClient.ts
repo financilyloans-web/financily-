@@ -69,6 +69,52 @@ declare global {
 
 const SCRIPT_ID = "youpi-universal";
 
+/** Expected base64-decoded byte length for each supported SRI algorithm. */
+const INTEGRITY_BYTES: Record<string, number> = {
+  sha256: 32,
+  sha384: 48,
+  sha512: 64,
+};
+
+/**
+ * Validate a Subresource Integrity hash. Supported algorithms: sha256, sha384,
+ * sha512. The hash must be a real base64 digest of the expected length for the
+ * declared algorithm. Placeholder strings (e.g. `sha384-EXAMPLE`) are rejected,
+ * so a template value can never make the gateway appear configured.
+ */
+function isValidIntegrity(integrity: string | undefined): boolean {
+  if (!integrity) return false;
+  const trimmed = integrity.trim();
+
+  // Reject obvious placeholders before any decoding.
+  if (/EXAMPLE|PLACEHOLDER|YOUR|CHANGE|KEEP/i.test(trimmed)) return false;
+
+  const m = /^(sha256|sha384|sha512)-([A-Za-z0-9+/=]+)$/.exec(trimmed);
+  if (!m) return false;
+
+  const algo = m[1];
+  const b64 = m[2];
+  const expectedBytes = INTEGRITY_BYTES[algo];
+
+  let decodedBytes = -1;
+  try {
+    decodedBytes = atob(b64).length;
+  } catch {
+    return false;
+  }
+
+  return decodedBytes === expectedBytes;
+}
+
+/**
+ * Basic gateway configuration check: checkout URL + public key present.
+ *
+ * NOTE: this intentionally does NOT require the SRI hash. A deployment that has
+ * valid gateway credentials but no pinned hash should still show the Pay button
+ * and get a clear, specific error at load time (see injectScript) — rather than
+ * being silently disabled. The actual script load remains fail-closed on the
+ * integrity hash.
+ */
 export function youpiClientConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_YOUPI_CHECKOUT_URL &&
@@ -100,10 +146,21 @@ function injectScript(): Promise<YoupiGlobal> {
   const publicKey = process.env.NEXT_PUBLIC_YOUPI_PUBLIC_KEY;
   const integrity = process.env.NEXT_PUBLIC_YOUPI_SCRIPT_INTEGRITY;
 
+  // Fail closed: the checkout script is never loaded unless a valid SRI hash
+  // is pinned. Without a trusted hash we cannot guarantee the script loaded is
+  // the one we expect, so we refuse to run any checkout code.
   if (!checkoutUrl || !publicKey) {
     return Promise.reject(
       new Error(
-        "YouPI payment gateway is not configured. Add NEXT_PUBLIC_YOUPI_CHECKOUT_URL and NEXT_PUBLIC_YOUPI_PUBLIC_KEY.",
+        "YouPI payment gateway is not configured. Add NEXT_PUBLIC_YOUPI_CHECKOUT_URL, NEXT_PUBLIC_YOUPI_PUBLIC_KEY and NEXT_PUBLIC_YOUPI_SCRIPT_INTEGRITY.",
+      ),
+    );
+  }
+
+  if (!isValidIntegrity(integrity)) {
+    return Promise.reject(
+      new Error(
+        "YouPI checkout script is missing a valid SRI integrity hash (NEXT_PUBLIC_YOUPI_SCRIPT_INTEGRITY). Refusing to load an unpinned script.",
       ),
     );
   }
@@ -139,12 +196,10 @@ function injectScript(): Promise<YoupiGlobal> {
     script.setAttribute("data-currency", "INR");
     script.async = true;
 
-    // Subresource Integrity (SRI) pinning when a hash is configured. Requires
-    // crossorigin="anonymous" for the hash to take effect.
-    if (integrity) {
-      script.integrity = integrity;
-      script.crossOrigin = "anonymous";
-    }
+    // SRI is mandatory and validated above. crossorigin="anonymous" is required
+    // for the integrity hash to be enforced by the browser.
+    script.integrity = integrity!.trim();
+    script.crossOrigin = "anonymous";
 
     script.onload = () => {
       const poll = () => {
