@@ -84,6 +84,16 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Staff dashboard "Applications" tab lists loan applications across ALL
+    // users via a collection-group query. That query requires an explicit
+    // `/{path=**}` rule. (The nested /users/{uid}/applications rule above only
+    // covers single-document reads; collection-group queries need this.)
+    match /{path=**}/applications/{applicationId} {
+      allow read: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+    }
+
     // A user may manage their own profile document.
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid
