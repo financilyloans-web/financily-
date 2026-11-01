@@ -1,1 +1,1 @@
-feat: add admin staff provisioning tool (firebase-admin service account)
+fix: use firebase-admin v14 API in provision-staff tool

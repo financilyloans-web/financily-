@@ -31,6 +31,7 @@
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
+const { getFirestore } = require("firebase-admin/firestore");
 
 const EMAIL = process.argv[2];
 const ROLE = (process.argv[3] || "employee").toLowerCase();
@@ -68,15 +69,15 @@ async function main() {
   const serviceAccount = JSON.parse(fs.readFileSync(KEY_PATH, "utf8"));
   const projectId = serviceAccount.project_id;
 
-  if (admin.apps.length === 0) {
+  if (admin.getApps().length === 0) {
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+      credential: admin.cert(serviceAccount),
       projectId,
       databaseURL: undefined,
     });
   }
 
-  const db = admin.firestore();
+  const db = getFirestore(admin.getApps()[0]);
 
   const email = normalizeEmail(EMAIL);
   const role = ROLE;
@@ -100,5 +101,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  fail(err && err.message ? err.message : String(err));
+  // Surface the full error for diagnosis (not just err.message).
+  fail(
+    (err && err.stack ? err.stack : err && err.message ? err.message : String(err)) +
+      "\n",
+  );
 });
