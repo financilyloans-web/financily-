@@ -1,1 +1,1 @@
-chore: drop scratch commit message file
+chore: remove scratch commit message file from repo
