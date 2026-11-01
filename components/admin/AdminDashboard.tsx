@@ -6,7 +6,7 @@ import { collection, getDocs, query } from "firebase/firestore";
 import { motion } from "framer-motion";
 import {
   ShieldCheck, LogOut, Loader2, UserPlus, Mail, Lock, Briefcase,
-  UserCog, CheckCircle2, AlertTriangle, Users, KeyRound,
+  UserCog, CheckCircle2, AlertTriangle, Users, KeyRound, Trash2,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { RequireAuth } from "@/components/auth/RequireAuth";
@@ -39,6 +39,7 @@ export function AdminDashboard() {
   const [password, setPassword] = useState("");
   const [targetRole, setTargetRole] = useState<StaffRole>("agent");
   const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -104,6 +105,31 @@ export function AdminDashboard() {
       setMessage({ ok: false, text: getErrorMessage(err) });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const removeStaff = async (emailToRemove: string) => {
+    if (!window.confirm(`Remove ${emailToRemove}? This permanently deletes their login and roster entry.`)) {
+      return;
+    }
+    setMessage(null);
+    setRemoving(emailToRemove);
+    try {
+      const idToken = await user?.getIdToken(true);
+      if (!idToken) throw new Error("Not authenticated.");
+      const res = await fetch("/api/admin/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: emailToRemove }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Removal failed.");
+      setMessage({ ok: true, text: `✔ ${data.email} removed.` });
+      loadRoster();
+    } catch (err: any) {
+      setMessage({ ok: false, text: getErrorMessage(err) });
+    } finally {
+      setRemoving(null);
     }
   };
 
@@ -261,9 +287,26 @@ export function AdminDashboard() {
                           <p className="text-xs text-slate-400">Role: {STAFF_ROLE_LABELS[entry.role]}</p>
                         </div>
                       </div>
-                      <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", entry.role === "admin" ? "bg-primary-400/15 text-primary-300" : entry.role === "agent" ? "bg-cyan-400/15 text-cyan-300" : "bg-accent-500/15 text-accent-300")}>
-                        {STAFF_ROLE_LABELS[entry.role]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", entry.role === "admin" ? "bg-primary-400/15 text-primary-300" : entry.role === "agent" ? "bg-cyan-400/15 text-cyan-300" : "bg-accent-500/15 text-accent-300")}>
+                          {STAFF_ROLE_LABELS[entry.role]}
+                        </span>
+                        {entry.role !== "admin" && entry.email !== user?.email && (
+                          <button
+                            onClick={() => removeStaff(entry.email)}
+                            disabled={removing === entry.email}
+                            className="grid h-8 w-8 place-items-center rounded-lg border border-rose-400/30 bg-rose-400/10 text-rose-300 transition-colors hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label={`Remove ${entry.email}`}
+                            title="Remove account"
+                          >
+                            {removing === entry.email ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
