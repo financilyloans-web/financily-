@@ -17,7 +17,20 @@ interface PayEmiButtonProps {
   className?: string;
 }
 
-type ModalState = { status: "idle" | "loading" | "ready" | "error"; url?: string; error?: string };
+interface ReceiverInfo {
+  payeeName: string;
+  upiId: string;
+  accountNumber: string;
+  ifsc: string;
+  bankName: string;
+}
+
+type ModalState = {
+  status: "idle" | "loading" | "ready" | "error";
+  url?: string;
+  error?: string;
+  receiver?: ReceiverInfo;
+};
 
 export function PayEmiButton({
   orderId,
@@ -53,7 +66,11 @@ export function PayEmiButton({
       if (!data.session?.checkoutUrl) {
         throw new Error("No checkout URL returned.");
       }
-      setState({ status: "ready", url: data.session.checkoutUrl });
+      setState({
+        status: "ready",
+        url: data.session.checkoutUrl,
+        receiver: data.receiver,
+      });
     } catch (err: any) {
       setState({ status: "error", error: err?.message || "Something went wrong." });
     }
@@ -110,6 +127,20 @@ export function PayEmiButton({
                 </button>
               </div>
 
+              {/* Receiver details */}
+              {state.receiver && (
+                <div className="border-b border-white/10 bg-white/5 px-5 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Paying to
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                    <span className="font-semibold text-white">{state.receiver.payeeName}</span>
+                    <span className="text-slate-300">UPI {state.receiver.upiId}</span>
+                    <span className="text-slate-400">{state.receiver.bankName}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Body */}
               <div className="p-5">
                 {state.status === "loading" && (
@@ -145,12 +176,23 @@ export function PayEmiButton({
 
               {/* Footer */}
               {state.status === "ready" && (
-                <div className="flex items-center gap-2 border-t border-white/10 bg-white/5 px-5 py-3 text-[11px] text-slate-400">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
-                  <span>
-                    Payment is processed by your UPI app. Financily is not a lender
-                    and does not handle funds — settlement is direct to the lender.
-                  </span>
+                <div className="border-t border-white/10 bg-white/5 px-5 py-3">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
+                    <span>
+                      Payment is processed by your UPI app. Financily is not a lender
+                      and does not handle funds — settlement is direct to the lender.
+                    </span>
+                  </div>
+                  {state.receiver && (
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[10.5px] text-slate-500">
+                      <span>Before paying, verify the beneficiary:</span>
+                      <span className="text-slate-300">{state.receiver.payeeName}</span>
+                      <span>UPI {state.receiver.upiId}</span>
+                      <span>A/c {state.receiver.accountNumber}</span>
+                      <span>IFSC {state.receiver.ifsc}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

@@ -3,6 +3,7 @@ import {
   createYoupiSession,
   youpiConfigured,
 } from "@/lib/youpi";
+import { PAYMENT_RECEIVER } from "@/lib/paymentReceiver";
 
 /**
  * POST /api/payments/youpi
@@ -62,9 +63,13 @@ export async function POST(req: NextRequest) {
       description,
       customer,
       returnUrl,
-      metadata,
+      metadata: {
+        ...metadata,
+        receiver_payee: PAYMENT_RECEIVER.payeeName,
+        receiver_upi: PAYMENT_RECEIVER.upiId,
+      },
     });
-    return NextResponse.json({ ok: true, session });
+    return NextResponse.json({ ok: true, session, receiver: PAYMENT_RECEIVER });
   } catch (err: any) {
     // eslint-disable-next-line no-console
     console.error("[payments/youpi] error:", err);
