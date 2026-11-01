@@ -15,8 +15,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# env files (uncomment if committed)
-# .env*
+# env files — never commit local secrets
+.env
+.env*.local
+.env.*.local
 
 # typescript
 *.tsbuildinfo

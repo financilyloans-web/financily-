@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getAnalytics, type Analytics } from "firebase/analytics";
 
 /**
  * Firebase client initialisation.
@@ -17,6 +18,7 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 export const firebaseConfigured = Boolean(
@@ -29,16 +31,26 @@ export const FIREBASE_MESSAGE =
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
+let analytics: Analytics | undefined;
 
 if (firebaseConfigured) {
   try {
     app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+
+    // Google Analytics is browser-only; it must never run during SSR/prerender.
+    if (typeof window !== "undefined") {
+      try {
+        analytics = getAnalytics(app);
+      } catch {
+        analytics = undefined;
+      }
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("Firebase init error:", err);
   }
 }
 
-export { auth, db };
+export { auth, db, analytics };
