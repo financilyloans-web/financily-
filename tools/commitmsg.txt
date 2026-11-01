@@ -1,1 +1,0 @@
-chore: remove scratch commit message file from repo
