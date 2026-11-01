@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { STAFF_ROLE_LABELS, type StaffRole } from "@/lib/staff";
 
-const VALID_ROLES: StaffRole[] = ["agent", "employee", "admin"];
+/**
+ * Roles that may be created via this self-serve admin API. Admin accounts are
+ * deliberately excluded: an admin must never be able to mint additional admin
+ * privileges from the web panel (a compromised admin would otherwise be able
+ * to escalate indefinitely). Admins are provisioned exclusively via the
+ * high-assurance CLI (`tools/provision-staff.cjs`, requires a service-account
+ * key) or the Firebase console.
+ */
+const VALID_ROLES: StaffRole[] = ["agent", "employee"];
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -61,24 +69,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Password must be at least 6 characters." }, { status: 400 });
     }
     if (!VALID_ROLES.includes(role as StaffRole)) {
-      return NextResponse.json({ error: "Role must be agent, employee or admin." }, { status: 400 });
+      return NextResponse.json({ error: "Role must be agent or employee." }, { status: 400 });
     }
 
-    // 4. Create or update the auth user.
+    // 4. Create the auth user (create-only — we never modify an existing
+    //     account's password here). This deliberately closes a privilege-
+    //     escalation vector: an existing authenticated user's password must
+    //     never be reset by this endpoint, and the caller must never be able
+    //     to take over another account via a silent `updateUser` call.
     let uid: string;
-    let created = false;
     try {
       const u = await adminAuth().createUser({ email, password });
       uid = u.uid;
-      created = true;
     } catch (err: any) {
       if (err?.code === "auth/email-already-exists") {
-        const existing = await adminAuth().getUserByEmail(email);
-        uid = existing.uid;
-        await adminAuth().updateUser(uid, { password });
-      } else {
-        throw err;
+        return NextResponse.json(
+          { error: "An account with this email already exists. Reset its password through the dedicated password-reset flow instead of recreating it." },
+          { status: 409 },
+        );
       }
+      throw err;
     }
 
     // 5. Upsert the roster document (source of truth).
@@ -86,7 +96,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      created,
       uid,
       email,
       role,
