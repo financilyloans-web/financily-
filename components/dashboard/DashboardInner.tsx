@@ -20,6 +20,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { getUserApplications, getUserSavedRequests, type LoanApplication } from "@/lib/firestore";
 import { firebaseConfigured, FIREBASE_MESSAGE } from "@/lib/firebase";
 import { ButtonLink } from "@/components/ui/Button";
+import { PayEmiButton } from "@/components/payments/PayEmiButton";
 import { cn, formatINR, formatDate } from "@/lib/utils";
 
 type Tab = "overview" | "profile" | "applications" | "eligibility" | "saved";
@@ -135,6 +136,7 @@ export function DashboardInner() {
           className="mt-6"
         >
           {tab === "overview" && (
+      <>
             <div className="grid gap-4 md:grid-cols-3">
               <StatCard icon={FileText} label="Applications" value={String(applications.length || 0)} />
               <StatCard icon={BadgeCheck} label="Active offers" value={String(applications.filter((a) => a.status === "offer_received").length || 0)} />
@@ -147,6 +149,24 @@ export function DashboardInner() {
                 </div>
               </div>
             </div>
+
+            <div className="glass rounded-3xl p-6 md:col-span-2">
+              <h3 className="font-display text-lg font-bold text-white">Pay your EMI</h3>
+              <p className="mt-1 text-sm text-slate-400">
+                Make a UPI payment directly to your lender. Financily merely
+                facilitates the checkout — funds go straight to the lender.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <PayEmiButton
+                  orderId={`EMI-${(user?.uid || "U").slice(0, 8)}`}
+                  amount={5000}
+                  description="Financily EMI payment"
+                  customer={{ name: user?.displayName || undefined, email: user?.email || undefined }}
+                />
+                <ButtonLink href="/eligibility-checker" variant="ghost" size="sm">How EMI works</ButtonLink>
+              </div>
+            </div>
+      </>
           )}
 
           {tab === "profile" && (
@@ -197,8 +217,24 @@ export function DashboardInner() {
                       <Detail label="Submitted" value={formatDate(String(a.createdAt))} />
                       <Detail label="Lender" value={a.lender || "Pending match"} />
                       <Detail label="Offered rate" value={a.offerRate ? `${a.offerRate}%` : "—"} />
+                      </div>
+                      {a.status === "disbursed" && (
+                        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
+                          <div>
+                            <p className="text-sm font-semibold text-emerald-300">Loan active — EMI due</p>
+                            <p className="text-xs text-slate-400">Pay your monthly instalment via UPI</p>
+                          </div>
+                          <PayEmiButton
+                            variant="ghost"
+                            size="sm"
+                            orderId={`EMI-${a.refNumber || a.id}`}
+                            amount={Math.round(a.loanAmount / 12)}
+                            description={`EMI for ${a.refNumber || a.id}`}
+                            customer={{ name: a.fullName, email: a.email }}
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
                 );
               })}
             </div>
