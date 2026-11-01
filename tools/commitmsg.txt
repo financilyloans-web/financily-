@@ -1,1 +1,1 @@
-chore: remove temp commit-message scratch file
+chore: drop scratch commit message file
