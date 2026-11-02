@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, X, CreditCard, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { cn } from "@/lib/utils";
+import { cn, safeJson } from "@/lib/utils";
 import { PAYMENT_RECEIVER } from "@/lib/paymentReceiver";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
@@ -129,8 +129,8 @@ export function PayEmiButton({
       const orderRes = await fetch(
         `/api/payments/youpi-order?orderId=${encodeURIComponent(orderId)}`,
       );
-      const orderData = await orderRes.json().catch(() => ({}));
-      if (!orderRes.ok) {
+      const orderData = (await safeJson<{ orderId?: string; amount?: number; error?: string }>(orderRes)) || {};
+      if (!orderRes.ok || !orderData.orderId) {
         setState({
           status: "error",
           error: orderData?.error || "Could not resolve the order.",

@@ -5,26 +5,18 @@ import {
 } from "@/lib/youpi";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { PAYMENT_RECEIVER } from "@/lib/paymentReceiver";
-
-const ORDER_ID_RE = /^EMI-[0-9a-f]{32}$/;
+import { ORDER_ID_RE, resolveLoanByPayToken } from "@/lib/youpiOrder";
 
 /**
  * POST /api/payments/youpi
- * Creates a YouPI payment session for an EMI payment.
+ * Creates a YouPI payment session for an EMI payment. The merchant API key
+ * never leaves the server. The order is resolved AUTHORITATIVELY server-side
+ * from the loan's payToken (embedded in the orderId `EMI-<payToken>`), so the
+ * client cannot tamper with which loan or amount is paid.
  *
- * The order is resolved AUTHORITATIVELY server-side from the loan's payToken
- * (embedded in the orderId `EMI-<payToken>`) via a targeted, indexed
- * collection-group query — never a full scan. The client supplies no amount;
- * the payable amount is read from the loan record and used exactly (no
- * rounding) so it reconciles with the amount check in verifyYoupiPayment.
- *
- * Authorization: the payToken is the high-entropy bearer credential that
- * authorizes an anonymous payment (the "no account needed" flow). When a
- * Firebase ID token is supplied, it is verified and the caller must own the
- * loan (or be an admin); otherwise the request is rejected 401/403.
- *
- * Request body:
- *   { orderId, description?, customer?, returnUrl?, metadata? }
+ * Authorization: the payToken is the high-entropy bearer secret that gates the
+ * order; optionally, if the caller presents a Firebase ID token, we additionally
+ * bind the session to the loan owner (or an admin).
  */
 export async function POST(req: NextRequest) {
   if (!youpiConfigured()) {
@@ -37,8 +29,8 @@ export async function POST(req: NextRequest) {
   let body: {
     orderId?: unknown;
     description?: unknown;
-    customer?: unknown;
     returnUrl?: unknown;
+    customer?: unknown;
     metadata?: unknown;
   };
   try {
@@ -52,7 +44,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "orderId is required." }, { status: 400 });
   }
 
-  const token = orderId.slice("EMI-".length);
   const description = typeof body.description === "string" ? body.description : undefined;
   const returnUrl = typeof body.returnUrl === "string" ? body.returnUrl : undefined;
   const customer =
@@ -65,25 +56,19 @@ export async function POST(req: NextRequest) {
       : undefined;
 
   try {
-    // Targeted, indexed lookup — never a full collection scan.
-    const snap = await adminDb()
-      .collectionGroup("applications")
-      .where("payToken", "==", token)
-      .limit(1)
-      .get();
-    const doc = snap.docs[0];
-    if (!doc) {
+    const loan = await resolveLoanByPayToken(orderId.slice("EMI-".length));
+    if (!loan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
-    const data = doc.data();
+    const data = loan.data;
 
-    if (data?.status === "rejected") {
+    if (data.status === "rejected") {
       return NextResponse.json(
         { error: "This loan has been rejected and cannot be paid." },
         { status: 409 },
       );
     }
-    if (data?.emiEligible !== true) {
+    if (data.emiEligible !== true) {
       return NextResponse.json(
         { error: "EMI payment is not enabled for this loan." },
         { status: 403 },
@@ -101,7 +86,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid or expired token." }, { status: 401 });
       }
       const isAdmin = decoded?.email != null && (await isAdminEmail(decoded.email));
-      const isOwner = decoded?.uid != null && data?.uid === decoded.uid;
+      const isOwner = decoded?.uid != null && data.uid === decoded.uid;
       if (!isOwner && !isAdmin) {
         return NextResponse.json(
           { error: "You are not authorized to pay this loan." },
@@ -112,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     // Use the EXACT stored EMI amount (paise-preserving) so it reconciles with
     // verifyYoupiPayment's 0.01 tolerance and never overcharges the customer.
-    const emiAmount = Number(data?.emiAmount);
+    const emiAmount = Number(data.emiAmount);
     if (!Number.isFinite(emiAmount) || emiAmount <= 0) {
       return NextResponse.json(
         { error: "No EMI amount has been configured for this loan." },
@@ -124,8 +109,8 @@ export async function POST(req: NextRequest) {
       orderId,
       amount: emiAmount,
       description,
-      customer,
       returnUrl,
+      customer,
       metadata: {
         ...metadata,
         receiver_payee: PAYMENT_RECEIVER.payeeName,

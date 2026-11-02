@@ -32,3 +32,23 @@ export function formatDate(iso?: string): string {
     return "—";
   }
 }
+
+/**
+ * Safely parse a fetch response body as JSON. If the response is not JSON
+ * (e.g. an HTML error page or a gateway/proxy error), returns `null` instead of
+ * throwing "Unexpected token '<' ...". Callers should fall back to a clear
+ * message when this returns null.
+ */
+export async function safeJson<T = Record<string, unknown>>(
+  res: Response,
+): Promise<T | null> {
+  try {
+    const text = await res.text();
+    if (text.startsWith("{") || text.startsWith("[")) {
+      return JSON.parse(text) as T;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

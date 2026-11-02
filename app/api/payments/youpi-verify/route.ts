@@ -3,19 +3,16 @@ import {
   verifyYoupiOrder,
   youpiConfigured,
 } from "@/lib/youpi";
-import { adminDb } from "@/lib/firebaseAdmin";
+import { ORDER_ID_RE, resolveLoanByPayToken } from "@/lib/youpiOrder";
 
 /**
  * POST /api/payments/youpi-verify
  *
- * Authoritative, server-side payment verification. The browser never trusts the
- * `youpi:payment:success` event (which is spoofable). The client passes the loan
- * orderId (`EMI-<payToken>`) and the gateway paymentId; we re-resolve the
- * authoritative order ourselves — by the loan's payToken — and verify against
- * the authoritative amount. Any client-supplied amount/orderId are ignored, so
- * a tampered payload cannot produce a false confirmation.
- *
- * Public (no sign-in), consistent with the anonymous Pay-EMI flow.
+ * Verifies a YouPI payment. The orderId (`EMI-<payToken>`) and the gateway
+ * paymentId are required; we re-resolve the authoritative order ourselves — by
+ * the loan's payToken — and verify against the authoritative admin-set amount.
+ * Any client-supplied amount/orderId are ignored, so a tampered client cannot
+ * cause a wrong amount to be verified.
  */
 export async function POST(req: NextRequest) {
   if (!youpiConfigured()) {
@@ -35,30 +32,21 @@ export async function POST(req: NextRequest) {
   const orderId = typeof body.orderId === "string" ? body.orderId.trim() : "";
   const paymentId = typeof body.paymentId === "string" ? body.paymentId.trim() : "";
 
-  if (!orderId.startsWith("EMI-")) {
+  if (!ORDER_ID_RE.test(orderId)) {
     return NextResponse.json({ error: "orderId is required." }, { status: 400 });
   }
   if (!paymentId) {
     return NextResponse.json({ error: "paymentId is required." }, { status: 400 });
   }
 
-  const token = orderId.slice("EMI-".length);
-
   try {
-    // Re-resolve the authoritative order server-side via a targeted, indexed
-    // collection-group query (never a full scan); ignore client amounts.
-    const snap = await adminDb()
-      .collectionGroup("applications")
-      .where("payToken", "==", token)
-      .limit(1)
-      .get();
-    const doc = snap.docs[0];
-    if (!doc) {
+    const loan = await resolveLoanByPayToken(orderId.slice("EMI-".length));
+    if (!loan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
-    const data = doc.data();
+    const data = loan.data;
 
-    if (data?.status === "rejected") {
+    if (data.status === "rejected") {
       return NextResponse.json(
         { error: "This loan has been rejected and cannot be paid." },
         { status: 409 },
@@ -67,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     // Payment must be explicitly enabled by an admin for this loan, and the
     // amount payable is the admin-set EMI amount (never derived client-side).
-    if (data?.emiEligible !== true) {
+    if (data.emiEligible !== true) {
       return NextResponse.json(
         { error: "EMI payment is not enabled for this loan." },
         { status: 403 },
@@ -76,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     // Use the EXACT stored EMI amount (paise-preserving) so verification matches
     // the session-created amount and the 0.01 tolerance in verifyYoupiOrder.
-    const emiAmount = Number(data?.emiAmount);
+    const emiAmount = Number(data.emiAmount);
     const amount = Number.isFinite(emiAmount) && emiAmount > 0 ? emiAmount : 0;
     if (amount <= 0) {
       return NextResponse.json(

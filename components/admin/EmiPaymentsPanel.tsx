@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Loader2, Phone, IndianRupee, ShieldCheck, Search, CheckCircle2, AlertTriangle, UserCheck } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { cn } from "@/lib/utils";
+import { cn, safeJson } from "@/lib/utils";
 
 interface AppRow {
   id: string;
@@ -39,7 +39,8 @@ export function EmiPaymentsPanel() {
       const res = await fetch(`/api/admin/emi?mobile=${encodeURIComponent(mobile)}`, {
         headers: { authorization: `Bearer ${await idToken()}` },
       });
-      const data = await res.json();
+      const data = await safeJson<{ error?: string; applications?: AppRow[] }>(res);
+      if (!data) throw new Error("Lookup failed.");
       if (!res.ok) throw new Error(data.error || "Lookup failed.");
       setApps(data.applications || []);
       if ((data.applications || []).length === 0) {
@@ -74,7 +75,8 @@ export function EmiPaymentsPanel() {
         },
         body: JSON.stringify({ mobile, amount: amt, eligible }),
       });
-      const data = await res.json();
+      const data = await safeJson<{ error?: string; eligible?: boolean; updated?: number; amount?: number }>(res);
+      if (!data) throw new Error("Save failed.");
       if (!res.ok) throw new Error(data.error || "Save failed.");
       setMessage({
         ok: true,

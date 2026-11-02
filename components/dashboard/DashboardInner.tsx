@@ -115,7 +115,7 @@ export function DashboardInner() {
   if (!user) return null;
 
   // Pay EMI requires admin enablement (emiEligible) and pays the admin-set
-  // amount. Payer anonymity is preserved via the loan's payToken.
+  // amount. The order is keyed by the loan's random payToken.
   const activeLoan = applications.find((a) => a.emiEligible === true && a.payToken && Number(a.emiAmount) > 0);
 
   return (
