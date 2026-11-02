@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { adminAuth, adminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
 import type { DocumentReference } from "firebase-admin/firestore";
 
 function normalizeEmail(email: string): string {
@@ -12,6 +12,16 @@ function normalizeEmail(email: string): string {
  * unauthorized, or null when allowed.
  */
 async function requireAdmin(req: NextRequest): Promise<NextResponse | null> {
+  if (!isAdminConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Firebase Admin is not configured: the service-account key is missing " +
+          "(staff/service-account.json or SERVICE_ACCOUNT_PATH).",
+      },
+      { status: 503 },
+    );
+  }
   const auth = req.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) {

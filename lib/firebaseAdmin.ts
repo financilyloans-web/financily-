@@ -18,10 +18,35 @@ import path from "path";
  * WARNING: never import this into a client component.
  */
 
-function ensureServiceAccount(): ServiceAccount {
-  const keyPath =
+/** Resolve the service-account key path (env override, else staff/). */
+export function serviceAccountPath(): string {
+  return (
     process.env.SERVICE_ACCOUNT_PATH ||
-    path.join(process.cwd(), "staff", "service-account.json");
+    path.join(process.cwd(), "staff", "service-account.json")
+  );
+}
+
+/**
+ * Best-effort check whether the Firebase Admin SDK can initialize. Returns
+ * false (without throwing) when the service-account key is absent. Used to
+ * return a clean JSON error from API routes instead of an unhandled crash.
+ */
+export function isAdminConfigured(): boolean {
+  try {
+    const keyPath = serviceAccountPath();
+    if (!fs.existsSync(keyPath)) return false;
+    const parsed = JSON.parse(fs.readFileSync(keyPath, "utf8")) as {
+      client_email?: string;
+      private_key?: string;
+    };
+    return !!(parsed.client_email && parsed.private_key);
+  } catch {
+    return false;
+  }
+}
+
+function ensureServiceAccount(): ServiceAccount {
+  const keyPath = serviceAccountPath();
 
   if (!fs.existsSync(keyPath)) {
     throw new Error(
