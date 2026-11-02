@@ -80,6 +80,15 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Admin-set EMI enablement keyed by mobile (doc id == mobile). Readable by
+    // staff for review; writes are server-only (Admin SDK) so they stay closed.
+    match /emi_payments/{mobile} {
+      allow read: if request.auth != null
+        && request.auth.token.email != null
+        && staffDocNamed(request.auth.token.email);
+      allow write: if false;
+    }
+
     // Lead capture is authenticated and append-only. Only the signed-in user
     // may record a lead under their own uid; staff may read leads for the
     // dashboard. Raw KYC is always blocked.

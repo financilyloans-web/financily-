@@ -92,7 +92,7 @@ export async function createYoupiSession(
     headers: {
       "Content-Type": "application/json",
       "X-Merchant-Id": cfg.merchantId,
-      Authorization: `Bearer ${cfg.apiKey}`,
+      "X-Merchant-Key": cfg.apiKey,
       // Idempotency: an order should never create two live sessions.
       "Idempotency-Key": `financily:${input.orderId}`,
     },
@@ -159,7 +159,7 @@ export async function verifyYoupiOrder(
       headers: {
         Accept: "application/json",
         "X-Merchant-Id": cfg.merchantId,
-        Authorization: `Bearer ${cfg.apiKey}`,
+        "X-Merchant-Key": cfg.apiKey,
       },
     },
   );

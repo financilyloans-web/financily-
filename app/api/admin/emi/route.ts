@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb, isAdminConfigured } from "@/lib/firebaseAdmin";
-import type { DocumentReference } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
+import { EMI_PAYMENTS_COLLECTION, makePayToken } from "@/lib/youpiOrder";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -109,8 +110,29 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const apps = await getApplicationsForMobile(mobile);
+    // 1. Standalone enablement (works for ANY mobile number, even with no
+    //    loan application — e.g. a number that has not applied yet). This is
+    //    the authoritative "who can pay / how much" for non-application flows.
+    const standaloneRef = adminDb().collection(EMI_PAYMENTS_COLLECTION).doc(mobile);
+    const existingStandalone = await standaloneRef.get().catch(() => null);
+    const existingToken =
+      existingStandalone?.exists && typeof existingStandalone.data()?.payToken === "string"
+        ? existingStandalone.data()!.payToken
+        : "";
+    const payToken = eligible ? existingToken || makePayToken() : null;
+    await standaloneRef.set(
+      {
+        mobile,
+        emiEligible: eligible,
+        emiAmount: eligible ? Math.round(amount) : null,
+        payToken,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
 
+    // 2. Also apply to any matching (non-rejected) loan applications.
+    const apps = await getApplicationsForMobile(mobile);
     let updated = 0;
     const batch = adminDb().batch();
     for (const { ref, data } of apps) {

@@ -86,8 +86,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid or expired token." }, { status: 401 });
       }
       const isAdmin = decoded?.email != null && (await isAdminEmail(decoded.email));
-      const isOwner = decoded?.uid != null && data.uid === decoded.uid;
-      if (!isOwner && !isAdmin) {
+      // Loan-backed payments bind to the borrower; standalone EMI records (no
+      // application) have no owner — the unguessable orderId is the credential.
+      const isOwner = decoded?.uid != null && !!data.uid && data.uid === decoded.uid;
+      const isStandalone = !data.uid;
+      if (!isStandalone && !isOwner && !isAdmin) {
         return NextResponse.json(
           { error: "You are not authorized to pay this loan." },
           { status: 403 },

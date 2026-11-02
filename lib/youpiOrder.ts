@@ -17,6 +17,10 @@ import { randomBytes } from "crypto";
 export const ORDER_ID_RE = /^EMI-[0-9a-f]{32}$/;
 export const MOBILE_RE = /^[6-9]\d{9}$/;
 
+/** Top-level collection holding admin-set EMI enablement for a mobile number,
+ *  independent of any loan application (allows paying without an application). */
+export const EMI_PAYMENTS_COLLECTION = "emi_payments";
+
 /** Generate a high-entropy 128-bit hex bearer token (orderId suffix). */
 export function makePayToken(): string {
   return randomBytes(16).toString("hex");
@@ -62,9 +66,37 @@ function refOf(doc: { ref?: { update(x: Record<string, unknown>): Promise<unknow
  * been deployed yet (FAILED_PRECONDITION), so it works before/after index
  * deployment.
  */
+/**
+ * Read the admin-set standalone EMI enablement for a mobile number. This is a
+ * top-level record (`emi_payments/{mobile}`) that lets an admin enable payment
+ * for a number even when no loan application exists for it. Returns null when
+ * not present or not enabled.
+ */
+export async function getStandaloneEmiByMobile(
+  mobile: string,
+): Promise<LoanRecord | null> {
+  try {
+    const ref = adminDb().collection(EMI_PAYMENTS_COLLECTION).doc(mobile);
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    const data = snap.data() as Record<string, any>;
+    const amount = Number(data?.emiAmount);
+    if (data?.emiEligible !== true || !Number.isFinite(amount) || amount <= 0) {
+      return null;
+    }
+    return { ref: { update: (x) => ref.update(x) }, data };
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveEmiLoanByMobile(
   mobile: string,
 ): Promise<LoanRecord | null> {
+  // Standalone admin-set enablement (no application required) takes precedence.
+  const standalone = await getStandaloneEmiByMobile(mobile);
+  if (standalone) return standalone;
+
   const Q = () => adminDb().collectionGroup("applications");
 
   const tryIndexed = async (): Promise<LoanRecord | null> => {
@@ -140,13 +172,32 @@ export async function resolveLoanByPayToken(
       .limit(1)
       .get();
     const d = snap.docs[0];
-    if (!d) return null;
-    return { ref: refOf(d), data: d.data() };
+    if (d) return { ref: refOf(d), data: d.data() };
   } catch (err: any) {
     if (!(err?.code === 9 || /FAILED_PRECONDITION/.test(String(err?.message)))) throw err;
   }
   const snapshot = await adminDb().collectionGroup("applications").get();
   for (const d of snapshot.docs) {
+    if (d.data()?.payToken === token) {
+      return { ref: refOf(d), data: d.data() };
+    }
+  }
+
+  // Fall back to a standalone admin-set EMI record (no application required).
+  try {
+    const snap = await adminDb()
+      .collection(EMI_PAYMENTS_COLLECTION)
+      .where("payToken", "==", token)
+      .limit(1)
+      .get();
+    const d = snap.docs[0];
+    if (d) return { ref: refOf(d), data: d.data() };
+  } catch {
+    /* ignore index/query errors; scan below */
+  }
+
+  const standaloneAll = await adminDb().collection(EMI_PAYMENTS_COLLECTION).get();
+  for (const d of standaloneAll.docs) {
     if (d.data()?.payToken === token) {
       return { ref: refOf(d), data: d.data() };
     }
