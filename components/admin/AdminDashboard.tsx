@@ -13,6 +13,7 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { getStaffRole, STAFF_ROLE_LABELS, type StaffRole } from "@/lib/staff";
 import { db } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
+import { EmiPaymentsPanel } from "./EmiPaymentsPanel";
 
 interface RosterEntry {
   email: string;
@@ -315,6 +316,9 @@ export function AdminDashboard() {
           </div>
         </div>
       </div>
+        <div className="section-shell pb-10 pt-4">
+          <EmiPaymentsPanel />
+        </div>
     </RequireAuth>
   );
 }

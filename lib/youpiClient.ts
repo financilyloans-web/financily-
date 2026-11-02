@@ -1,5 +1,7 @@
 "use client";
 
+import { youpiScriptAttrs } from "@/lib/youpiScriptAttrs";
+
 /**
  * YOUPI PG — Universal client-side integration (one-script, programmatic API).
  *
@@ -31,6 +33,8 @@ export interface YoupiPayOptions {
   description?: string;
   customer?: YoupiCustomer;
   metadata?: Record<string, unknown>;
+  /** Optional Firebase ID token — sent to the server to authorize session creation. */
+  idToken?: string;
   handler?: (response: YoupiPaymentResult) => void;
   onClose?: () => void;
 }
@@ -47,15 +51,13 @@ export interface YoupiPaymentResult {
 
 interface YoupiGlobal {
   pay: (options: {
-    order_id: string;
-    amount: number;
-    currency: string;
-    /** Merchant display name shown in the checkout (e.g. "Financily"). */
-    name?: string;
-    /** Line-item / order description shown in the checkout. */
-    description?: string;
-    customer?: { name?: string; email?: string; phone?: string };
-    metadata?: Record<string, unknown>;
+    /**
+     * Server-created checkout session. The YouPI SDK requires a session created
+     * on the server from trusted order data (checkoutUrl and/or paymentId); it
+     * refuses raw client-side order_id/amount.
+     */
+    checkoutUrl: string;
+    paymentId?: string;
     handler?: (response: YoupiPaymentResult) => void;
     onClose?: () => void;
   }) => void;
@@ -191,9 +193,12 @@ function injectScript(): Promise<YoupiGlobal> {
 
     const script = document.createElement("script");
     script.id = SCRIPT_ID;
-    script.src = `${checkoutUrl.replace(/\/$/, "")}/youpi.js`;
-    script.setAttribute("data-youpi-key", publicKey);
-    script.setAttribute("data-currency", "INR");
+
+    const attrs = youpiScriptAttrs(checkoutUrl, publicKey);
+    script.src = attrs.src;
+    script.setAttribute("data-youpi-key", attrs.dataYoupiKey);
+    script.setAttribute("data-merchant-id", attrs.dataMerchantId);
+    script.setAttribute("data-currency", attrs.dataCurrency);
     script.async = true;
 
     // SRI is mandatory and validated above. crossorigin="anonymous" is required
@@ -221,16 +226,35 @@ export function loadYoupi(): Promise<YoupiGlobal> {
 }
 
 export async function payWithYoupi(options: YoupiPayOptions): Promise<void> {
+  // The YouPI SDK refuses raw client-side order data (order_id + amount): it
+  // requires a server-created session. Create the session on the server
+  // (authoritative order data; merchant key stays server-side), then pass the
+  // returned checkoutUrl to Youpi.pay().
+  const res = await fetch("/api/payments/youpi", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {}),
+    },
+    body: JSON.stringify({
+      orderId: options.orderId,
+      amount: options.amount,
+      description: options.description,
+      customer: options.customer,
+      metadata: options.metadata
+        ? (options.metadata as Record<string, string>)
+        : undefined,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.session?.checkoutUrl) {
+    throw new Error(data?.error || "Could not create payment session.");
+  }
+
   const youpi = await loadYoupi();
   youpi.pay({
-    order_id: options.orderId,
-    amount: options.amount,
-    currency: options.currency || "INR",
-    // Top-level merchant + line-item fields as documented by the YouPI API.
-    name: options.name || "Financily",
-    description: options.description,
-    customer: options.customer,
-    metadata: options.metadata,
+    checkoutUrl: data.session.checkoutUrl,
+    paymentId: data.session.paymentId,
     handler: options.handler,
     onClose: options.onClose,
   });

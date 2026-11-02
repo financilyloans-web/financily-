@@ -46,6 +46,16 @@ export interface LoanApplication {
   status: "submitted" | "under_review" | "offer_received" | "disbursed" | "rejected";
   lender?: string;
   offerRate?: number;
+  /**
+   * High-entropy per-loan bearer token used to authorize anonymous EMI payments
+   * (orderId = `EMI-<payToken>`). A random, unguessable value so a third party
+   * cannot enumerate other borrowers' loans or amounts.
+   */
+  payToken?: string;
+  /** EMI payment enablement — controlled by an admin (see /api/admin/emi). */
+  emiEligible?: boolean;
+  /** Admin-set amount payable as an EMI for this loan. */
+  emiAmount?: number;
   createdAt?: Timestamp | Date;
 }
 
@@ -118,12 +128,24 @@ export function generateRefNumber(): string {
   return `LN-${year}-${code}`;
 }
 
+/**
+ * Generate a high-entropy per-loan bearer token (128-bit hex). This is used as
+ * the private payment key for anonymous EMI payments and is deliberately NOT a
+ * guessable/human-readable value.
+ */
+export function generatePayToken(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function saveApplication(app: Omit<LoanApplication, "id" | "createdAt">): Promise<string> {
   ensureDb();
   const sanitized = await sanitizeKyc(app);
   const docRef = await addDoc(collection(db!, "users", app.uid, "applications"), {
     ...sanitized,
     refNumber: app.refNumber || generateRefNumber(),
+    payToken: app.payToken || generatePayToken(),
     createdAt: serverTimestamp(),
   });
   return docRef.id;

@@ -3,16 +3,28 @@ import {
   createYoupiSession,
   youpiConfigured,
 } from "@/lib/youpi";
+import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { PAYMENT_RECEIVER } from "@/lib/paymentReceiver";
+
+const ORDER_ID_RE = /^EMI-[0-9a-f]{32}$/;
 
 /**
  * POST /api/payments/youpi
- * Creates a YouPI payment session for an EMI payment. The merchant API key
- * lives only on the server (see lib/youpi.ts); the browser receives just the
- * checkout URL to open in the YouPI modal.
+ * Creates a YouPI payment session for an EMI payment.
+ *
+ * The order is resolved AUTHORITATIVELY server-side from the loan's payToken
+ * (embedded in the orderId `EMI-<payToken>`) via a targeted, indexed
+ * collection-group query — never a full scan. The client supplies no amount;
+ * the payable amount is read from the loan record and used exactly (no
+ * rounding) so it reconciles with the amount check in verifyYoupiPayment.
+ *
+ * Authorization: the payToken is the high-entropy bearer credential that
+ * authorizes an anonymous payment (the "no account needed" flow). When a
+ * Firebase ID token is supplied, it is verified and the caller must own the
+ * loan (or be an admin); otherwise the request is rejected 401/403.
  *
  * Request body:
- *   { orderId, amount, description?, customer?, returnUrl?, metadata? }
+ *   { orderId, description?, customer?, returnUrl?, metadata? }
  */
 export async function POST(req: NextRequest) {
   if (!youpiConfigured()) {
@@ -24,7 +36,6 @@ export async function POST(req: NextRequest) {
 
   let body: {
     orderId?: unknown;
-    amount?: unknown;
     description?: unknown;
     customer?: unknown;
     returnUrl?: unknown;
@@ -37,7 +48,11 @@ export async function POST(req: NextRequest) {
   }
 
   const orderId = typeof body.orderId === "string" ? body.orderId.trim() : "";
-  const amount = Number(body.amount);
+  if (!ORDER_ID_RE.test(orderId)) {
+    return NextResponse.json({ error: "orderId is required." }, { status: 400 });
+  }
+
+  const token = orderId.slice("EMI-".length);
   const description = typeof body.description === "string" ? body.description : undefined;
   const returnUrl = typeof body.returnUrl === "string" ? body.returnUrl : undefined;
   const customer =
@@ -49,17 +64,65 @@ export async function POST(req: NextRequest) {
       ? (body.metadata as Record<string, string>)
       : undefined;
 
-  if (!orderId) {
-    return NextResponse.json({ error: "orderId is required." }, { status: 400 });
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return NextResponse.json({ error: "amount must be a positive number." }, { status: 400 });
-  }
-
   try {
+    // Targeted, indexed lookup — never a full collection scan.
+    const snap = await adminDb()
+      .collectionGroup("applications")
+      .where("payToken", "==", token)
+      .limit(1)
+      .get();
+    const doc = snap.docs[0];
+    if (!doc) {
+      return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    }
+    const data = doc.data();
+
+    if (data?.status === "rejected") {
+      return NextResponse.json(
+        { error: "This loan has been rejected and cannot be paid." },
+        { status: 409 },
+      );
+    }
+    if (data?.emiEligible !== true) {
+      return NextResponse.json(
+        { error: "EMI payment is not enabled for this loan." },
+        { status: 403 },
+      );
+    }
+
+    // Optional but enforced identity binding when a Firebase token is supplied.
+    const authHeader = req.headers.get("authorization") || "";
+    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (idToken) {
+      let decoded: { uid?: string; email?: string } | null = null;
+      try {
+        decoded = await adminAuth().verifyIdToken(idToken);
+      } catch {
+        return NextResponse.json({ error: "Invalid or expired token." }, { status: 401 });
+      }
+      const isAdmin = decoded?.email != null && (await isAdminEmail(decoded.email));
+      const isOwner = decoded?.uid != null && data?.uid === decoded.uid;
+      if (!isOwner && !isAdmin) {
+        return NextResponse.json(
+          { error: "You are not authorized to pay this loan." },
+          { status: 403 },
+        );
+      }
+    }
+
+    // Use the EXACT stored EMI amount (paise-preserving) so it reconciles with
+    // verifyYoupiPayment's 0.01 tolerance and never overcharges the customer.
+    const emiAmount = Number(data?.emiAmount);
+    if (!Number.isFinite(emiAmount) || emiAmount <= 0) {
+      return NextResponse.json(
+        { error: "No EMI amount has been configured for this loan." },
+        { status: 409 },
+      );
+    }
+
     const session = await createYoupiSession({
       orderId,
-      amount,
+      amount: emiAmount,
       description,
       customer,
       returnUrl,
@@ -77,5 +140,15 @@ export async function POST(req: NextRequest) {
       { error: err?.message || "Could not create payment session." },
       { status: 500 },
     );
+  }
+}
+
+/** Returns true when the given email is a provisioned admin (staff roster). */
+async function isAdminEmail(email: string): Promise<boolean> {
+  try {
+    const staffDoc = await adminDb().collection("staff").doc(email.toLowerCase()).get();
+    return staffDoc.exists && staffDoc.data()?.role === "admin";
+  } catch {
+    return false;
   }
 }

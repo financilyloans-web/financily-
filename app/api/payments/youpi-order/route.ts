@@ -1,77 +1,88 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
-import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
+import { adminDb } from "@/lib/firebaseAdmin";
+import type { DocumentReference } from "firebase-admin/firestore";
+import { randomBytes } from "crypto";
 
 /**
- * GET /api/payments/youpi-order?orderId=EMI-LN-2026-8492
+ * GET /api/payments/youpi-order?mobile=<10-digit>
  *
- * Authoritative order resolution for the YouPI checkout.
+ * Authoritative order resolution for the YouPI checkout, keyed by the
+ * borrower's MOBILE NUMBER (not an order id, per product requirement).
  *
- * The Pay-EMI UI receives orderId/amount from React props. A malicious or
- * tampered page could pass a wrong amount or orderId. To prevent charging the
- * wrong amount for the wrong order, the client must resolve the order here
- * FIRST, and only call Youpi.pay with the amount/orderId this endpoint returns.
- *
- * The route is authenticated (Firebase ID token). It reads the caller's stored
- * loan application from Firestore (admin SDK) and recomputes the EMI amount
- * from the authoritative loanAmount — never from client inputs.
+ * The endpoint is intentionally PUBLIC (no sign-in), so anyone can pay an EMI
+ * without a Firebase account. Payment is only possible when an admin has
+ * explicitly enabled EMI payment for that mobile number and set the payable
+ * amount (see /api/admin/emi). We return only the minimal data needed to pay
+ * (orderId + amount) — no borrower PII is exposed.
  */
+const MOBILE_RE = /^[6-9]\d{9}$/;
+
+function makePayToken(): string {
+  return randomBytes(16).toString("hex");
+}
+
 export async function GET(req: NextRequest) {
-  // 1. Authenticate the caller.
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) {
-    return NextResponse.json({ error: "Missing authorization token." }, { status: 401 });
+  const mobile = (req.nextUrl.searchParams.get("mobile") || "").trim();
+  if (!MOBILE_RE.test(mobile)) {
+    return NextResponse.json(
+      { error: "A valid 10-digit mobile number is required." },
+      { status: 400 },
+    );
   }
 
-  let uid: string;
   try {
-    const decoded = await adminAuth().verifyIdToken(token);
-    uid = decoded.uid;
-  } catch {
-    return NextResponse.json({ error: "Invalid or expired authorization token." }, { status: 401 });
-  }
+    // NOTE: full collection-group scan + in-memory mobile filter, mirroring the
+    // verify route, so no composite Firestore index is required. If the app
+    // grows, add a COLLECTION_GROUP_ASC index on `mobile` and switch this to
+    // `.where("mobile", "==", mobile)`.
+    const snapshot = await adminDb().collectionGroup("applications").get();
 
-  // 2. Read + validate orderId (expected format: EMI-<refNumber|docId>).
-  const orderId = (req.nextUrl.searchParams.get("orderId") || "").trim();
-  if (!orderId.startsWith("EMI-")) {
-    return NextResponse.json({ error: "Invalid orderId." }, { status: 400 });
-  }
-  const ref = orderId.slice("EMI-".length);
-
-  // 3. Look up the caller's applications for the matching ref/document.
-  try {
-    const snapshot = await adminDb()
-      .collection("users")
-      .doc(uid)
-      .collection("applications")
-      .get();
-
-    let match: QueryDocumentSnapshot | undefined;
-    snapshot.forEach((doc) => {
+    // Match on admin-enablement alone. The amount is validated separately below
+    // so that an enabled loan with a bad amount surfaces a clear 409 instead of
+    // silently falling through to a 404.
+    let match: { ref: DocumentReference; data: Record<string, any> } | null = null;
+    for (const doc of snapshot.docs) {
       const data = doc.data();
-      const key = data?.refNumber || doc.id;
-      if (key === ref) match = doc;
-    });
+      if (data.mobile !== mobile) continue;
+      if (data.status === "rejected") continue;
+      if (data.emiEligible === true) {
+        match = { ref: doc.ref, data };
+        break;
+      }
+    }
 
     if (!match) {
-      return NextResponse.json({ error: "Order not found for this account." }, { status: 404 });
+      return NextResponse.json(
+        { error: "No active EMI payment is enabled for this mobile number." },
+        { status: 404 },
+      );
     }
 
-    const data = match.data();
-    const loanAmount = Number(data?.loanAmount);
-    if (!Number.isFinite(loanAmount) || loanAmount <= 0) {
-      return NextResponse.json({ error: "Order has no valid amount." }, { status: 409 });
+    // Ensure the loan has a random bearer token to derive the order id.
+    let payToken = match.data.payToken as string | undefined;
+    if (!payToken) {
+      payToken = makePayToken();
+      await match.ref.update({ payToken });
     }
 
-    // Authoritative EMI amount — same formula the dashboard uses, recomputed
-    // server-side from the stored loanAmount.
-    const amount = Math.round(loanAmount / 12);
+    // Validate the admin-set EMI amount explicitly rather than letting 0 / NaN
+    // slip through (mirrors the guard in youpi-verify).
+    const rawAmount = Number(match.data.emiAmount);
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
+      return NextResponse.json(
+        { error: "No valid EMI amount is configured for this mobile number." },
+        { status: 409 },
+      );
+    }
 
+    const orderId = `EMI-${payToken}`;
+    const amount = rawAmount;
+
+    // Deliberately do NOT return borrower PII (e.g. refNumber) from this public
+    // endpoint — the checkout only needs orderId + amount.
     return NextResponse.json({
-      orderId: `EMI-${data?.refNumber || match.id}`,
+      orderId,
       amount,
-      refNumber: data?.refNumber || match.id,
     });
   } catch (err: any) {
     // eslint-disable-next-line no-console

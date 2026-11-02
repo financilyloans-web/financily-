@@ -36,15 +36,12 @@ type ModalState = {
  * YouPI gateway (merchant key) for the real status and only returns
  * `confirmed: true` for a settled, amount-matched payment belonging to that order.
  */
-async function verifyPayment(idToken: string, orderId: string, paymentId: string, amount: number): Promise<boolean> {
+async function verifyPayment(orderId: string, paymentId: string): Promise<boolean> {
   try {
     const res = await fetch("/api/payments/youpi-verify", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({ orderId, paymentId, amount }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, paymentId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.confirmed !== true) return false;
@@ -75,16 +72,8 @@ export function PayEmiButton({
         // The client event is ONLY a trigger — verify with the backend/gateway
         // before showing success.
         setState((s) => ({ ...s, status: "loading" }));
-        const runVerify = async () => {
-          const idToken = await user?.getIdToken(true).catch(() => undefined);
-          if (!idToken) {
-            setState({
-              status: "error",
-              error: "Please sign in to confirm your payment.",
-            });
-            return;
-          }
-          const confirmed = await verifyPayment(idToken, orderId, orderId, amount);
+        const runVerify = async (paymentId: string) => {
+          const confirmed = await verifyPayment(orderId, paymentId);
           setState((s) =>
             confirmed
               ? { status: "success" }
@@ -95,7 +84,9 @@ export function PayEmiButton({
                 },
           );
         };
-        runVerify();
+        // Pass the gateway's own transaction id from the event, not the loan
+        // order id, so we confirm THIS settled transaction.
+        runVerify(detail.order_id || orderId);
       } else if (detail.status === "FAILED" || detail.status === "SUSPICIOUS") {
         setState({ status: "error", error: `Payment was ${detail.status.toLowerCase()}. You can retry.` });
       } else if (detail.status === "EXPIRED") {
@@ -125,18 +116,18 @@ export function PayEmiButton({
     setState({ status: "loading" });
 
     try {
+      let idToken: string | undefined;
+      try {
+        idToken = (await user?.getIdToken(true)) || undefined;
+      } catch {
+        idToken = undefined;
+      }
+
       // 1. Resolve the AUTHORITATIVE order from the backend. We never trust the
       //    orderId/amount passed via props — a tampered page could otherwise
       //    charge the wrong amount for the wrong order.
-      const idToken = await user?.getIdToken(true).catch(() => undefined);
-      if (!idToken) {
-        setState({ status: "error", error: "Please sign in to pay." });
-        return;
-      }
-
       const orderRes = await fetch(
         `/api/payments/youpi-order?orderId=${encodeURIComponent(orderId)}`,
-        { headers: { Authorization: `Bearer ${idToken}` } },
       );
       const orderData = await orderRes.json().catch(() => ({}));
       if (!orderRes.ok) {
@@ -167,6 +158,7 @@ export function PayEmiButton({
         orderId: orderData.orderId,
         amount: orderData.amount,
         description,
+        idToken,
         customer: customer
           ? { name: customer.name, email: customer.email, phone: customer.phoneNumber }
           : undefined,

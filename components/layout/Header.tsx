@@ -8,6 +8,7 @@ import { Menu, X, LogIn, ArrowRight } from "lucide-react";
 import { Logo } from "./Logo";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/utils";
+import { NavPayButton } from "@/components/payments/NavPayButton";
 
 const NAV = [
   { label: "Home", href: "/" },
@@ -85,6 +86,7 @@ export function Header() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <NavPayButton />
             {user ? (
               <Link
                 href="/dashboard"

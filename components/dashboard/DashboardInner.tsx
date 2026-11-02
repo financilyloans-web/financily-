@@ -17,8 +17,9 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { getUserApplications, getUserSavedRequests, type LoanApplication } from "@/lib/firestore";
-import { firebaseConfigured, FIREBASE_MESSAGE } from "@/lib/firebase";
+import { getUserApplications, getUserSavedRequests, generatePayToken, type LoanApplication } from "@/lib/firestore";
+import { db, firebaseConfigured, FIREBASE_MESSAGE } from "@/lib/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 import { ButtonLink } from "@/components/ui/Button";
 import { PayEmiButton } from "@/components/payments/PayEmiButton";
 import { cn, formatINR, formatDate } from "@/lib/utils";
@@ -67,6 +68,29 @@ export function DashboardInner() {
     if (tab === "applications" || tab === "saved") loadData();
   }, [tab, loadData]);
 
+  // Backfill a payToken for any loan created before tokens existed, so the
+  // anonymous Pay-EMI order id is always resolvable. Owner writes are allowed by
+  // the Firestore rules, so this runs client-side.
+  useEffect(() => {
+    if (!configured || !db || !user?.uid || !applications.length) return;
+    const firestore = db;
+    const uid = user.uid;
+    let changed = false;
+    const next = applications.map((a) => {
+      if (a.payToken || !a.id) return a;
+      changed = true;
+      const payToken = generatePayToken();
+      // Must include `uid` — the Firestore rules require uid == auth.uid on
+      // every application write, or the backfill is silently denied.
+      updateDoc(doc(firestore, "users", uid, "applications", a.id), { uid, payToken }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn("[dashboard] payToken backfill failed:", e);
+      });
+      return { ...a, payToken };
+    });
+    if (changed) setApplications(next);
+  }, [configured, user, applications]);
+
   const resendVerification = async () => {
     setVerifyMsg("");
     try {
@@ -89,6 +113,10 @@ export function DashboardInner() {
   }
 
   if (!user) return null;
+
+  // Pay EMI requires admin enablement (emiEligible) and pays the admin-set
+  // amount. Payer anonymity is preserved via the loan's payToken.
+  const activeLoan = applications.find((a) => a.emiEligible === true && a.payToken && Number(a.emiAmount) > 0);
 
   return (
     <div className="section-shell py-8">
@@ -157,12 +185,19 @@ export function DashboardInner() {
                 facilitates the checkout — funds go straight to the lender.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <PayEmiButton
-                  orderId={`EMI-${(user?.uid || "U").slice(0, 8)}`}
-                  amount={5000}
-                  description="Financily EMI payment"
-                  customer={{ name: user?.displayName || undefined, email: user?.email || undefined }}
-                />
+                {activeLoan ? (
+                  <PayEmiButton
+                    orderId={`EMI-${activeLoan.payToken}`}
+                    amount={Math.round(Number(activeLoan.emiAmount))}
+                    description={`EMI for ${activeLoan.refNumber || activeLoan.id}`}
+                    customer={{ name: activeLoan.fullName, email: activeLoan.email }}
+                  />
+                ) : (
+                  <p className="text-sm text-slate-400">
+                    No loan applications yet — once you have an approved loan, your
+                    EMI pay button appears here.
+                  </p>
+                )}
                 <ButtonLink href="/eligibility-checker" variant="ghost" size="sm">How EMI works</ButtonLink>
               </div>
             </div>
@@ -218,17 +253,17 @@ export function DashboardInner() {
                       <Detail label="Lender" value={a.lender || "Pending match"} />
                       <Detail label="Offered rate" value={a.offerRate ? `${a.offerRate}%` : "—"} />
                       </div>
-                      {a.status === "disbursed" && (
+                      {a.emiEligible === true && a.payToken && Number(a.emiAmount) > 0 && (
                         <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
                           <div>
-                            <p className="text-sm font-semibold text-emerald-300">Loan active — EMI due</p>
+                            <p className="text-sm font-semibold text-emerald-300">Pay EMI</p>
                             <p className="text-xs text-slate-400">Pay your monthly instalment via UPI</p>
                           </div>
                           <PayEmiButton
                             variant="ghost"
                             size="sm"
-                            orderId={`EMI-${a.refNumber || a.id}`}
-                            amount={Math.round(a.loanAmount / 12)}
+                            orderId={`EMI-${a.payToken}`}
+                            amount={Math.round(Number(a.emiAmount))}
                             description={`EMI for ${a.refNumber || a.id}`}
                             customer={{ name: a.fullName, email: a.email }}
                           />
