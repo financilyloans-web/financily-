@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import type { DocumentReference } from "firebase-admin/firestore";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -33,6 +34,35 @@ async function requireAdmin(req: NextRequest): Promise<NextResponse | null> {
 }
 
 const MOBILE_RE = /^[6-9]\d{9}$/;
+
+/**
+ * Load all applications registered to a mobile number using a targeted,
+ * indexed collection-group query on `mobile` (index declared in
+ * firestore.indexes.json). Falls back to a scan only if the index has not been
+ * deployed yet (FAILED_PRECONDITION), so the endpoint works before/after index
+ * deployment. This avoids loading the entire applications collection.
+ */
+async function getApplicationsForMobile(mobile: string): Promise<
+  { ref: DocumentReference; data: Record<string, any> }[]
+> {
+  const Q = () => adminDb().collectionGroup("applications");
+  const out: { ref: DocumentReference; data: Record<string, any> }[] = [];
+
+  try {
+    const snap = await Q().where("mobile", "==", mobile).get();
+    for (const d of snap.docs) out.push({ ref: d.ref, data: d.data() });
+    return out;
+  } catch (err: any) {
+    if (!(err?.code === 9 || /FAILED_PRECONDITION/.test(String(err?.message)))) throw err;
+  }
+
+  const snap = await Q().get();
+  for (const d of snap.docs) {
+    if (d.data()?.mobile !== mobile) continue;
+    out.push({ ref: d.ref, data: d.data() });
+  }
+  return out;
+}
 
 /**
  * POST /api/admin/emi   body: { mobile, amount?, eligible }
@@ -69,20 +99,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const snapshot = await adminDb().collectionGroup("applications").get();
+    const apps = await getApplicationsForMobile(mobile);
 
     let updated = 0;
     const batch = adminDb().batch();
-    snapshot.forEach((d) => {
-      if (d.data()?.mobile !== mobile) return;
-      if (d.data()?.status === "rejected") return;
-      batch.update(d.ref, {
+    for (const { ref, data } of apps) {
+      if (data.status === "rejected") continue;
+      batch.update(ref, {
         emiEligible: eligible,
         emiAmount: eligible ? Math.round(amount) : null,
       });
       updated++;
-    });
-
+    }
     if (updated > 0) await batch.commit();
 
     return NextResponse.json({
@@ -116,22 +144,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const snapshot = await adminDb().collectionGroup("applications").get();
+    const apps = await getApplicationsForMobile(mobile);
 
-    const applications = snapshot.docs
-      .filter((d) => d.data()?.mobile === mobile)
-      .map((d) => {
-      const x = d.data();
-      return {
-        id: d.id,
-        uid: x.uid,
-        fullName: x.fullName || "—",
-        status: x.status || "—",
-        loanAmount: x.loanAmount ?? null,
-        emiEligible: x.emiEligible === true,
-        emiAmount: x.emiAmount ?? null,
-      };
-    });
+    const applications = apps.map(({ ref, data }) => ({
+      id: ref.id,
+      uid: data.uid,
+      fullName: data.fullName || "—",
+      status: data.status || "—",
+      loanAmount: data.loanAmount ?? null,
+      emiEligible: data.emiEligible === true,
+      emiAmount: data.emiAmount ?? null,
+    }));
 
     return NextResponse.json({ applications });
   } catch (err: any) {

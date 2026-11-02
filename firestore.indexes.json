@@ -19,6 +19,13 @@
       "collectionGroup": "applications",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
+        { "fieldPath": "mobile", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "applications",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
         { "fieldPath": "mobile", "order": "ASCENDING" },
         { "fieldPath": "emiEligible", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }

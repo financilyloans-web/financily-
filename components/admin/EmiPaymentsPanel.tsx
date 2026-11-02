@@ -76,7 +76,11 @@ export function EmiPaymentsPanel() {
         body: JSON.stringify({ mobile, amount: amt, eligible }),
       });
       const data = await safeJson<{ error?: string; eligible?: boolean; updated?: number; amount?: number }>(res);
-      if (!data) throw new Error("Save failed.");
+      if (!data) {
+        throw new Error(
+          `Save failed (HTTP ${res.status}). The server returned a non-JSON response — please check the deployment/Firestore configuration.`,
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Save failed.");
       setMessage({
         ok: true,
