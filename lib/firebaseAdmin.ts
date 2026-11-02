@@ -44,10 +44,63 @@ function loadFirestoreModule() {
   if (!firestoreModule) firestoreModule = require("firebase-admin/firestore");
   return firestoreModule!;
 }
-/** Resolve the service-account key path (env override, else staff/). */
+/**
+ * Resolve the service-account configuration. Supports all the common ways a
+ * hosting platform provides it:
+ *   - `FIREBASE_SERVICE_ACCOUNT` env var → raw JSON string of the key.
+ *   - `SERVICE_ACCOUNT_PATH` / `GOOGLE_APPLICATION_CREDENTIALS` env var → path
+ *     to the key file.
+ *   - default: `staff/service-account.json` in the project root.
+ * Returns null when none is configured/valid.
+ */
+export function loadServiceAccount(): ServiceAccount | null {
+  try {
+    // 1. Raw JSON in an env var (commonly used by Vercel/Render/…).
+    const rawEnv = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (rawEnv) {
+      const parsed = JSON.parse(rawEnv) as {
+        project_id?: string;
+        client_email?: string;
+        private_key?: string;
+      };
+      if (parsed.client_email && parsed.private_key) {
+        return {
+          projectId: parsed.project_id,
+          clientEmail: parsed.client_email,
+          privateKey: parsed.private_key,
+        };
+      }
+      return null;
+    }
+
+    // 2. Path to the key file.
+    const keyPath =
+      process.env.SERVICE_ACCOUNT_PATH ||
+      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+      path.join(process.cwd(), "staff", "service-account.json");
+    if (!fs.existsSync(keyPath)) return null;
+
+    const parsed = JSON.parse(fs.readFileSync(keyPath, "utf8")) as {
+      project_id?: string;
+      client_email?: string;
+      private_key?: string;
+    };
+    if (!parsed.client_email || !parsed.private_key) return null;
+    return {
+      projectId: parsed.project_id,
+      clientEmail: parsed.client_email,
+      privateKey: parsed.private_key,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve the service-account key file path (for error messages). */
 export function serviceAccountPath(): string {
   return (
     process.env.SERVICE_ACCOUNT_PATH ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
     path.join(process.cwd(), "staff", "service-account.json")
   );
 }
@@ -58,45 +111,20 @@ export function serviceAccountPath(): string {
  * return a clean JSON error from API routes instead of an unhandled crash.
  */
 export function isAdminConfigured(): boolean {
-  try {
-    const keyPath = serviceAccountPath();
-    if (!fs.existsSync(keyPath)) return false;
-    const parsed = JSON.parse(fs.readFileSync(keyPath, "utf8")) as {
-      client_email?: string;
-      private_key?: string;
-    };
-    return !!(parsed.client_email && parsed.private_key);
-  } catch {
-    return false;
-  }
+  return loadServiceAccount() !== null;
 }
 
 function ensureServiceAccount(): ServiceAccount {
-  const keyPath = serviceAccountPath();
-
-  if (!fs.existsSync(keyPath)) {
+  const serviceAccount = loadServiceAccount();
+  if (!serviceAccount) {
     throw new Error(
-      `Admin service-account key not found at ${keyPath}. ` +
-        "Add it (Firebase Console → Project settings → Service accounts → Generate new private key) " +
-        "or set SERVICE_ACCOUNT_PATH=/path/to/key.json.",
+      "Admin service-account key is not configured. " +
+        "Add it via FIREBASE_SERVICE_ACCOUNT (JSON), SERVICE_ACCOUNT_PATH " +
+        "or GOOGLE_APPLICATION_CREDENTIALS, or place it at " +
+        "staff/service-account.json.",
     );
   }
-
-  const raw = fs.readFileSync(keyPath, "utf8");
-  const parsed = JSON.parse(raw) as {
-    project_id?: string;
-    client_email?: string;
-    private_key?: string;
-    type?: string;
-  };
-  if (!parsed.client_email || !parsed.private_key) {
-    throw new Error("Service-account key is missing client_email / private_key.");
-  }
-  return {
-    projectId: parsed.project_id,
-    clientEmail: parsed.client_email,
-    privateKey: parsed.private_key,
-  };
+  return serviceAccount;
 }
 
 function getAdminApp(): App {
