@@ -29,3 +29,6 @@ next-env.d.ts
 
 # external reference clone (not part of this repo)
 _solitaire_ref/
+
+# self-hosted YouPI gateway — its own repo (youpi-pg/YouPI-PG), not part of this project
+youpi-pg/
