@@ -18,14 +18,13 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { saveApplication, generateRefNumber } from "@/lib/firestore";
+import { saveApplication, saveLead, generateRefNumber } from "@/lib/firestore";
 import { firebaseConfigured } from "@/lib/firebase";
 import { ButtonLink } from "@/components/ui/Button";
 import { cn, formatINR } from "@/lib/utils";
 import { findByPincode } from "@/lib/pincodes";
 import { buildSecureKyc } from "@/lib/kyc";
 import { PincodeSelect } from "./PincodeSelect";
-import Link from "next/link";
 
 const STEPS = [
   { id: 0, label: "Personal", icon: UserRound },
@@ -146,7 +145,8 @@ export function ApplyForm() {
 
       // Login is mandatory (gate above), so `user` is always present.
       const payload = {
-        uid: user!.uid,
+        ...(user ? { uid: user.uid } : {}),
+        // Guests have no uid; the lead is stored in the top-level leads collection.
         fullName: form.fullName.trim(),
         mobile: form.mobile.trim(),
         email: form.email.trim(),
@@ -165,12 +165,12 @@ export function ApplyForm() {
         status: "submitted" as const,
       };
 
-      // Login is mandatory (enforced by the gate above), so `user` is always
-      // present here. When Firebase is configured we save to Firestore;
-      // otherwise we fall back to a local-only capture for local development.
+      // When Firebase is configured we save to Firestore: authenticated users
+      // get a per-user application; guests get a lead. Otherwise we fall back
+      // to a local-only capture for local development.
       let ref = "LOCAL";
       if (firebaseConfigured) {
-        ref = await saveApplication(payload);
+        ref = user ? await saveApplication(payload) : await saveLead(payload);
       } else {
         const store = JSON.parse(localStorage.getItem("financily_applications") || "[]");
         store.unshift({ ...payload, refNumber: generateRefNumber(), id: `local_${Date.now()}`, createdAt: new Date().toISOString() });
@@ -189,32 +189,8 @@ export function ApplyForm() {
     }
   };
 
-  // ── Login gate: user must be verified before seeing the form ──
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-xl">
-        <div className="glass-strong rounded-[2rem] p-8 text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-primary-500 to-accent-600 text-white shadow-lg">
-            <ShieldCheck className="h-8 w-8" />
-          </div>
-          <h2 className="mt-5 font-display text-2xl font-bold text-white">Log in to apply</h2>
-          <p className="mt-3 text-slate-300">
-            Please verify your identity by logging in. This keeps your application
-            secure and lets us save your progress and offers.
-          </p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <ButtonLink href="/login" size="lg" className="sm:flex-1 sm:max-w-xs">Log in</ButtonLink>
-            <ButtonLink href="/signup" variant="ghost" size="lg" className="sm:flex-1 sm:max-w-xs">Create account</ButtonLink>
-          </div>
-          <p className="mt-5 text-xs text-slate-500">
-            By applying you agree to our{" "}
-            <Link href="/terms" className="text-cyan-300 hover:underline">Terms</Link> and{" "}
-            <Link href="/privacy-policy" className="text-cyan-300 hover:underline">Privacy Policy</Link>.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // No login gate: visitors may apply without an account (the form saves as a
+  // guest lead). Signed-in users get their own per-user application.
 
   if (submitted) {
     return (
@@ -233,7 +209,9 @@ export function ApplyForm() {
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <ButtonLink href="/">Back to home</ButtonLink>
-            <ButtonLink href="/dashboard" variant="ghost">Go to dashboard</ButtonLink>
+            {user && (
+              <ButtonLink href="/dashboard" variant="ghost">Go to dashboard</ButtonLink>
+            )}
           </div>
         </motion.div>
       </div>
@@ -558,3 +536,5 @@ function ConsentCheck({ checked, onChange, label }: { checked: boolean; onChange
     </button>
   );
 }
+
+

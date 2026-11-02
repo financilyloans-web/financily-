@@ -89,11 +89,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Lead capture is authenticated and append-only. Only the signed-in user
-    // may record a lead under their own uid; staff may read leads for the
-    // dashboard. Raw KYC is always blocked.
+    // Lead capture is append-only and works for both signed-in users and
+    // guests (a visitor may apply without creating an account). No raw KYC is
+    // ever stored. Staff may read leads for the dashboard.
     match /leads/{leadId} {
-      allow create: if authedAppend()
+      allow create: if rawKycBlocked()
         && request.resource.data.fullName is string
         && request.resource.data.mobile is string
         && request.resource.data.email is string;

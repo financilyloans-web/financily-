@@ -14,7 +14,8 @@ import { db } from "./firebase";
 
 export interface LoanApplication {
   id?: string;
-  uid: string;
+  /** Firebase uid of the owner. Absent for guest leads (saved to `leads`). */
+  uid?: string;
   /** Unique human-readable reference, e.g. LN-2026-8492. */
   refNumber?: string;
   fullName: string;
@@ -141,6 +142,7 @@ export function generatePayToken(): string {
 
 export async function saveApplication(app: Omit<LoanApplication, "id" | "createdAt">): Promise<string> {
   ensureDb();
+  if (!app.uid) throw new Error("A uid is required to save an application.");
   const sanitized = await sanitizeKyc(app);
   const docRef = await addDoc(collection(db!, "users", app.uid, "applications"), {
     ...sanitized,
