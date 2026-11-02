@@ -1,9 +1,8 @@
 import "server-only";
-import { initializeApp, cert, getApps, type App, type ServiceAccount } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
+import { createRequire } from "module";
+import type { App, ServiceAccount } from "firebase-admin/app";
 
 /**
  * Server-side Firebase Admin SDK initializer.
@@ -16,8 +15,35 @@ import path from "path";
  *
  * The key is git-ignored and never leaves the server.
  * WARNING: never import this into a client component.
+ *
+ * NOTE: `firebase-admin` is deliberately loaded lazily via `require()` at
+ * first use, NOT via a static top-level import. A static import would fail the
+ * entire route module at load time if the package is missing/broken on the
+ * host (producing an HTML 500 that no handler try/catch can intercept). With
+ * lazy loading, any failure surfaces inside the calling handler's try/catch,
+ * so API routes always return JSON.
  */
 
+const require = createRequire(import.meta.url);
+
+// Lazy module caches. The `type` imports above are erased at compile time, so
+// these load no runtime dependency at module scope.
+let appModule: typeof import("firebase-admin/app") | undefined;
+let authModule: typeof import("firebase-admin/auth") | undefined;
+let firestoreModule: typeof import("firebase-admin/firestore") | undefined;
+
+function loadAppModule() {
+  if (!appModule) appModule = require("firebase-admin/app");
+  return appModule!;
+}
+function loadAuthModule() {
+  if (!authModule) authModule = require("firebase-admin/auth");
+  return authModule!;
+}
+function loadFirestoreModule() {
+  if (!firestoreModule) firestoreModule = require("firebase-admin/firestore");
+  return firestoreModule!;
+}
 /** Resolve the service-account key path (env override, else staff/). */
 export function serviceAccountPath(): string {
   return (
@@ -74,6 +100,7 @@ function ensureServiceAccount(): ServiceAccount {
 }
 
 function getAdminApp(): App {
+  const { getApps, initializeApp, cert } = loadAppModule();
   const existing = getApps();
   if (existing.length) return existing[0];
 
@@ -85,7 +112,7 @@ function getAdminApp(): App {
 }
 
 /** Firebase Admin Auth (user management + ID-token verification). */
-export const adminAuth = () => getAuth(getAdminApp());
+export const adminAuth = () => loadAuthModule().getAuth(getAdminApp());
 
 /** Firebase Admin Firestore (server-side DB access, bypasses client rules). */
-export const adminDb = () => getFirestore(getAdminApp());
+export const adminDb = () => loadFirestoreModule().getFirestore(getAdminApp());
